@@ -1,4 +1,4 @@
-from list_space import List
+from .list_space import List
 
 __all__ = [
     "List"

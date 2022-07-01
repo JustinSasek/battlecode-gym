@@ -1,5 +1,5 @@
 from gym.spaces import Space
-from typing import Union, Optional, List as TypingList
+from typing import List as TypingList
 from collections.abc import MutableSequence
 import numpy as np
 
@@ -14,8 +14,8 @@ class List(Space[TypingList[Space]], MutableSequence):
 
     def __init__(
             self,
-            spaces: Optional[list[Space]] = None,
-            seed: Union[list, int, None] = None,
+            spaces: list[Space] | None = None,
+            seed: list | int | None = None,
     ) -> None:
         assert isinstance(spaces, list), 'spaces must be a list'
 
@@ -29,7 +29,7 @@ class List(Space[TypingList[Space]], MutableSequence):
         )  # None for shape and dtype, since it'll require special handling
 
 
-    def seed(self, seed: Union[list, int, None] = None) -> list:
+    def seed(self, seed: list | int | None = None) -> list:
         seeds = []
         if isinstance(seed, list):
             assert len(seed) == len(self.spaces), print(
