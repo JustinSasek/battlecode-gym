@@ -47,6 +47,7 @@ class TerritoryBattleMultiEnv(gym.Env):
         self.grid = np.empty(self.shape, dtype=np.int32)
         self.agents_init = deepcopy(agents_init)
         self.agents = tuple(Agent([]) for _ in agents_init)
+        self.bots = {}  # mapping from Tuple(int, int) positions to bots
 
         # tuple of action spaces for each agent, where each agent's action space is a list of bot action spaces
         # which is initialized with a single bot action space (one bot to start)
@@ -147,19 +148,35 @@ class TerritoryBattleMultiEnv(gym.Env):
 
         for i, bot_init in enumerate(self.agents_init):
             self.agents[i].bots.clear()  # remove all bots and add in initial bot
-            self.agents[i].bots.append(deepcopy(bot_init))
+            starting_bot = deepcopy(bot_init)
+            self.agents[i].bots.append(starting_bot)
             self.grid[bot_init.pos] = self.n_default_blocks + i  # fill in all layers with the bot id at its spawn
+            self.bots[starting_bot.pos] = starting_bot
 
         observation = self._get_obs()
         info = self._get_info()
         return (observation, info) if return_info else observation
 
     def step(self, action: FullAction) -> Tuple[FullObs, FullReward, bool, dict]:
-        for agent in self.agents:
-            for bot in agent.bots:
-                pass
+        # steps are processed in the following order:
+        # block
+        # attack/charge
+        # unblock/claim/noop
+        # movement
+        # turning
+        # observation
 
-        done = False  # TODO: step function !!
+        # block
+        for agent_id, agent_action in enumerate(action):
+            for bot_id, bot_action in enumerate(agent_action):
+                match bot_action[0]:
+                    case MainActions.BLOCK:
+                        self.agents[agent_id].bots[bot_id].block = True  # bot is now blocking
+
+        # TODO: attack/charge
+        # make sure to update self.bots
+
+        done = False
         reward = ([1], [1])
         observation = self._get_obs()
         info = self._get_info()

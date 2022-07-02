@@ -10,6 +10,7 @@ from collections.abc import Collection
 class Bot:
     pos: Tuple[int, int]  # 2d position
     rot: Tuple[int, int]  # rotation in terms of axes (e.g. (0, 1) is facing towards positive axis 1)
+    block: bool = False  # whether this bot is blocking or not
 
 
 @dataclass
