@@ -1,19 +1,9 @@
 import gym
 from gym import spaces
-from gym.core import ObsType, ActType
 from spaces import List
 import numpy as np
-from typing import Tuple
-from dataclasses import dataclass
-from collections.abc import Collection
-from enums import *
+from util_types import *
 from copy import deepcopy
-
-
-@dataclass
-class Bot:
-    pos: Tuple[int, int]  # 2d position
-    rot: Tuple[int, int]  # rotation in terms of axes (e.g. (0, 1) is facing towards positive axis 1)
 
 
 class TerritoryBattleMultiEnv(gym.Env):
@@ -26,7 +16,7 @@ class TerritoryBattleMultiEnv(gym.Env):
 
     def __init__(self,
                  shape: int | Tuple[int, int] = (7, 5),
-                 agents: Collection[Bot] = (Bot((0, 2), (1, 0)), Bot((6, 2), (-1, 0))),
+                 agents_init: Tuple[Bot] = (Bot((0, 2), (1, 0)), Bot((6, 2), (-1, 0))),
                  bot_vision: int | Tuple[int, int] = (3, 3),
                  window_height: int = 560,
                  ) -> None:
@@ -35,8 +25,8 @@ class TerritoryBattleMultiEnv(gym.Env):
 
         :param shape: The 2d shape of the environment.
         :type shape: int or Tuple[int, int], optional
-        :param agents: An n-tuple of 2-tuples, creates n agents at given 2-tuple spawn point.
-        :type agents: Iterable[Tuple[int, int]], optional
+        :param agents_init: An n-tuple of 2-tuples, creates n agents with bots at given 2-tuple spawn point.
+        :type agents_init: Tuple[Bot], optional
         :param bot_vision: Shape that represents the area the bot can see ahead of itself.
         :type bot_vision: int or Tuple[int, int], optional
         :param window_height: Height of the pygame window in human-mode.
@@ -52,10 +42,11 @@ class TerritoryBattleMultiEnv(gym.Env):
         self.bot_vision = bot_vision + (self.n_layers,)
         self.shape = shape + (self.n_layers,)
 
-        self.n_agents = len(agents)
+        self.n_agents = len(agents_init)
 
         self.grid = np.empty(self.shape, dtype=np.int32)
-        self.agents = (None,) * self.n_agents
+        self.agents_init = deepcopy(agents_init)
+        self.agents = tuple(Agent([]) for _ in agents_init)
 
         # tuple of action spaces for each agent, where each agent's action space is a list of bot action spaces
         # which is initialized with a single bot action space (one bot to start)
@@ -68,10 +59,8 @@ class TerritoryBattleMultiEnv(gym.Env):
             'bots': List([self.bot_observation_space()]),
             'grid': spaces.MultiDiscrete(  # grid array + extra axis (of size 2) to hold the grid view and bot view
                 np.full(self.shape, self.n_agents + self.n_default_blocks),
-            ),  # type: ignore
+            ),
         }) for _ in range(self.n_agents)))
-
-        self.agents_init = deepcopy(agents)
 
         """
         If human-rendering is used, `self.window` will be a reference
@@ -89,17 +78,15 @@ class TerritoryBattleMultiEnv(gym.Env):
 
     # each bot can see a 3x3 in front and a bit to left and right. last axis is for grid/bot view
     def bot_observation_space(self):
-        return spaces.MultiDiscrete(np.full(self.bot_vision, self.n_agents + self.n_default_blocks))  # type: ignore
+        return spaces.MultiDiscrete(np.full(self.bot_vision, self.n_agents + self.n_default_blocks))
 
-    def _get_obs(self) -> ObsType:
+    def _get_obs(self) -> FullObs:
         agent_observations = []
         for agent in self.agents:
             agent_view = np.full_like(self.grid, Blocks.UNKNOWN)  # all unknown by default
-            agent_observation = {
-                'bots': [],
-                'grid': agent_view,
-            }
-            for bot in agent:
+            agent_observation = AgentObs([], agent_view)
+
+            for bot in agent.bots:
                 view_size = tuple(self.bot_vision[:2][bot.rot[1 - i]] for i in range(2))
                 view_offset = tuple((view_size_axis - 1) // 2 for view_size_axis in view_size)
                 view_pos = tuple(bot.pos[i] + view_offset[i] * (bot.rot[i] - 1) for i in range(2))
@@ -137,7 +124,7 @@ class TerritoryBattleMultiEnv(gym.Env):
                 agent_view[grid_intersect[0]:grid_intersect[1], grid_intersect[2]:grid_intersect[3]] = \
                     bot_view_global[view_intersect[0]:view_intersect[1], view_intersect[2]:view_intersect[3]]
 
-                agent_observation['bots'].append(bot_view)
+                agent_observation.bots.append(bot_view)
             agent_observations.append(agent_observation)
 
         return tuple(agent_observations)
@@ -152,25 +139,26 @@ class TerritoryBattleMultiEnv(gym.Env):
               seed: int | None = None,
               return_info: bool = False,
               options: dict | None = None,
-              ) -> ObsType | Tuple[ObsType, dict]:
+              ) -> FullObs | Tuple[FullObs, dict]:
         # We need the following line to seed self.np_random
         super().reset(seed=seed)
 
-        # each agent controls an array of bots
-        self.agents = []
-        self.grid = np.zeros(self.shape, dtype=np.int32)
+        self.grid.fill(Blocks.EMPTY)  # reset grid
 
-        for i, bot in enumerate(self.agents_init):
-            self.agents.append([bot])
-            self.grid[bot.pos + (Layers.BOT,)] = self.n_default_blocks + i
-
-        self.agents = tuple(self.agents)
+        for i, bot_init in enumerate(self.agents_init):
+            self.agents[i].bots.clear()  # remove all bots and add in initial bot
+            self.agents[i].bots.append(deepcopy(bot_init))
+            self.grid[bot_init.pos] = self.n_default_blocks + i  # fill in all layers with the bot id at its spawn
 
         observation = self._get_obs()
         info = self._get_info()
         return (observation, info) if return_info else observation
 
-    def step(self, action: ActType) -> Tuple[ObsType, Tuple[Collection[float, ...], ...], bool, dict]:
+    def step(self, action: FullAction) -> Tuple[FullObs, FullReward, bool, dict]:
+        for agent in self.agents:
+            for bot in agent.bots:
+                pass
+
         done = False  # TODO: step function !!
         reward = ([1], [1])
         observation = self._get_obs()
@@ -180,5 +168,6 @@ class TerritoryBattleMultiEnv(gym.Env):
 
 
 a = TerritoryBattleMultiEnv()
+a.reset()
 # print(a.grid[:, :, 1])
-print(a._get_obs()[0]['grid'][:, :, 1])
+print(a._get_obs()[0].grid[:, :, 0])
