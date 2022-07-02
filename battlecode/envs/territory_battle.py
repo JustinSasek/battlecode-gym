@@ -1,11 +1,13 @@
 import gym
 from gym import spaces
+from gym.core import ObsType, ActType
 from spaces import List
 import numpy as np
 from typing import Tuple
 from dataclasses import dataclass
 from collections.abc import Collection
 from enums import *
+from copy import deepcopy
 
 
 @dataclass
@@ -48,8 +50,12 @@ class TerritoryBattleMultiEnv(gym.Env):
 
         self.window_height = window_height
         self.bot_vision = bot_vision + (self.n_layers,)
+        self.shape = shape + (self.n_layers,)
 
         self.n_agents = len(agents)
+
+        self.grid = np.empty(self.shape, dtype=np.int32)
+        self.agents = (None,) * self.n_agents
 
         # tuple of action spaces for each agent, where each agent's action space is a list of bot action spaces
         # which is initialized with a single bot action space (one bot to start)
@@ -61,20 +67,11 @@ class TerritoryBattleMultiEnv(gym.Env):
         self.observation_space = spaces.Tuple(tuple(spaces.Dict({
             'bots': List([self.bot_observation_space()]),
             'grid': spaces.MultiDiscrete(  # grid array + extra axis (of size 2) to hold the grid view and bot view
-                np.full(shape + (self.n_layers,), self.n_agents + self.n_default_blocks),
+                np.full(self.shape, self.n_agents + self.n_default_blocks),
             ),  # type: ignore
         }) for _ in range(self.n_agents)))
 
-
-        # each agent controls an array of bots
-        self.agents = []
-        self.grid = np.zeros(shape + (self.n_layers,), dtype=np.int32)
-
-        for i, bot in enumerate(agents):
-            self.agents.append([bot])
-            self.grid[bot.pos + (Layers.BOT,)] = self.n_default_blocks + i
-
-        self.agents = tuple(self.agents)
+        self.agents_init = deepcopy(agents)
 
         """
         If human-rendering is used, `self.window` will be a reference
@@ -94,7 +91,7 @@ class TerritoryBattleMultiEnv(gym.Env):
     def bot_observation_space(self):
         return spaces.MultiDiscrete(np.full(self.bot_vision, self.n_agents + self.n_default_blocks))  # type: ignore
 
-    def _get_obs(self):  # TODO: observation !
+    def _get_obs(self) -> ObsType:
         agent_observations = []
         for agent in self.agents:
             agent_view = np.full_like(self.grid, Blocks.UNKNOWN)  # all unknown by default
@@ -103,7 +100,7 @@ class TerritoryBattleMultiEnv(gym.Env):
                 'grid': agent_view,
             }
             for bot in agent:
-                view_size = tuple(self.bot_vision[:2][bot.rot[1-i]] for i in range(2))
+                view_size = tuple(self.bot_vision[:2][bot.rot[1 - i]] for i in range(2))
                 view_offset = tuple((view_size_axis - 1) // 2 for view_size_axis in view_size)
                 view_pos = tuple(bot.pos[i] + view_offset[i] * (bot.rot[i] - 1) for i in range(2))
 
@@ -134,7 +131,7 @@ class TerritoryBattleMultiEnv(gym.Env):
                 for axis_0 in bot_view:
                     for j in range(bot_view.shape[1] - 1):  # walls in last layer cannot cast shadows
                         if axis_0[j, 0] == Blocks.WALL:
-                            axis_0[j+1:] = Blocks.UNKNOWN  # every block after this one in 1-axis is unknown
+                            axis_0[j + 1:] = Blocks.UNKNOWN  # every block after this one in 1-axis is unknown
 
                 bot_view_global = np.rot90(bot_view, -n_rotations)  # sending shadow casting result back to world
                 agent_view[grid_intersect[0]:grid_intersect[1], grid_intersect[2]:grid_intersect[3]] = \
@@ -144,6 +141,42 @@ class TerritoryBattleMultiEnv(gym.Env):
             agent_observations.append(agent_observation)
 
         return tuple(agent_observations)
+
+    def _get_info(self) -> dict:
+        return {
+            'grid': self.grid
+        }
+
+    def reset(self,
+              *,
+              seed: int | None = None,
+              return_info: bool = False,
+              options: dict | None = None,
+              ) -> ObsType | Tuple[ObsType, dict]:
+        # We need the following line to seed self.np_random
+        super().reset(seed=seed)
+
+        # each agent controls an array of bots
+        self.agents = []
+        self.grid = np.zeros(self.shape, dtype=np.int32)
+
+        for i, bot in enumerate(self.agents_init):
+            self.agents.append([bot])
+            self.grid[bot.pos + (Layers.BOT,)] = self.n_default_blocks + i
+
+        self.agents = tuple(self.agents)
+
+        observation = self._get_obs()
+        info = self._get_info()
+        return (observation, info) if return_info else observation
+
+    def step(self, action: ActType) -> Tuple[ObsType, Tuple[Collection[float, ...], ...], bool, dict]:
+        done = False  # TODO: step function !!
+        reward = ([1], [1])
+        observation = self._get_obs()
+        info = self._get_info()
+
+        return observation, reward, done, info
 
 
 a = TerritoryBattleMultiEnv()
