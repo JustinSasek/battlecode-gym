@@ -1,7 +1,7 @@
-from enum import Enum
+from enum import IntEnum
 
 
-class MainActions(Enum):
+class MainActions(IntEnum):
     NOOP = 0
     FORWARD = 1
     BACK = 2
@@ -13,19 +13,19 @@ class MainActions(Enum):
     CLAIM = 8
 
 
-class TurnActions(Enum):
+class TurnActions(IntEnum):
     NOOP = 0
     LEFT = 1
     RIGHT = 2
     BACK = 3
 
 
-class Blocks(Enum):
-    UNKNOWN = -2
-    WALL = -1
+class Blocks(IntEnum):
     EMPTY = 0
+    WALL = 1
+    UNKNOWN = 2
 
 
-class Views(Enum):
+class Layers(IntEnum):
     GRID = 0
     BOT = 1
