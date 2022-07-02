@@ -97,29 +97,48 @@ class TerritoryBattleMultiEnv(gym.Env):
     def _get_obs(self):  # TODO: observation !
         agent_observations = []
         for agent in self.agents:
+            agent_view = np.full_like(self.grid, Blocks.UNKNOWN)  # all unknown by default
             agent_observation = {
                 'bots': [],
-                'grid': np.full_like(self.grid, Blocks.UNKNOWN),  # all unknown by default
+                'grid': agent_view,
             }
             for bot in agent:
                 view_size = tuple(self.bot_vision[:2][bot.rot[1-i]] for i in range(2))
                 view_offset = tuple((view_size_axis - 1) // 2 for view_size_axis in view_size)
                 view_pos = tuple(bot.pos[i] + view_offset[i] * (bot.rot[i] - 1) for i in range(2))
 
-                bot_view_global = np.empty(view_size + (self.n_layers,))  # bot view from global perspective
+                bot_view_global = np.full(view_size + (self.n_layers,), Blocks.UNKNOWN)  # bot view in global coords
 
-                for i in range(view_size[0]):
-                    for j in range(view_size[1]):
-                        global_pos = (view_pos[0] + i, view_pos[1] + j)
+                grid_intersect = (  # area of intersection between global grid and bot view
+                    max(0, view_pos[0]),
+                    min(self.grid.shape[0], view_pos[0] + view_size[0]),
+                    max(0, view_pos[1]),
+                    min(self.grid.shape[1], view_pos[1] + view_size[1])
+                )
+                view_intersect = (
+                    max(0, -view_pos[0]),
+                    view_size[0] + min(0, self.grid.shape[0] - (view_pos[0] + view_size[0])),
+                    max(0, -view_pos[1]),
+                    view_size[1] + min(0, self.grid.shape[1] - (view_pos[1] + view_size[1])),
+                )
 
-                        for axis in range(2):
-                            if not 0 <= global_pos[axis] < self.grid.shape[axis]:  # if outside of bounds in either axis
-                                bot_view_global[i, j] = Blocks.WALL
-                                break
-                        else:  # only runs if the loop exits normally (global pos is within bounds)
-                            bot_view_global[i, j, :] = self.grid[global_pos]
+                bot_view_global[view_intersect[0]:view_intersect[1], view_intersect[2]:view_intersect[3]] = \
+                    self.grid[grid_intersect[0]:grid_intersect[1], grid_intersect[2]:grid_intersect[3]]
 
-                bot_view = np.rot90(bot_view_global, abs(bot.rot[0] + 2 * bot.rot[1] - 1))  # relative bot view
+                n_rotations = abs(bot.rot[0] + 2 * bot.rot[1] - 1)  # how to rotate from world to local coordinates
+                bot_view = np.rot90(bot_view_global, n_rotations)  # relative bot view
+
+                # very crude shadow casting time, just cast shadows vertically from perspective of bot
+                # if you want to take the time to rly make this accurate, have at it:
+                # https://ir.lib.uwo.ca/cgi/viewcontent.cgi?article=8883&context=etd
+                for axis_0 in bot_view:
+                    for j in range(bot_view.shape[1] - 1):  # walls in last layer cannot cast shadows
+                        if axis_0[j, 0] == Blocks.WALL:
+                            axis_0[j+1:] = Blocks.UNKNOWN  # every block after this one in 1-axis is unknown
+
+                bot_view_global = np.rot90(bot_view, -n_rotations)  # sending shadow casting result back to world
+                agent_view[grid_intersect[0]:grid_intersect[1], grid_intersect[2]:grid_intersect[3]] = \
+                    bot_view_global[view_intersect[0]:view_intersect[1], view_intersect[2]:view_intersect[3]]
 
                 agent_observation['bots'].append(bot_view)
             agent_observations.append(agent_observation)
@@ -129,4 +148,4 @@ class TerritoryBattleMultiEnv(gym.Env):
 
 a = TerritoryBattleMultiEnv()
 # print(a.grid[:, :, 1])
-print(a._get_obs()[0]['bots'][0][:, :, 1])
+print(a._get_obs()[0]['grid'][:, :, 1])
