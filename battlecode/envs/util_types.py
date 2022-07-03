@@ -3,7 +3,7 @@ from enum import IntEnum
 from dataclasses import dataclass
 from typing import Tuple, overload, Iterable
 from numpy import ndarray
-from collections.abc import Collection, MutableSequence
+from collections.abc import MutableSequence, Sequence
 
 
 @dataclass
@@ -101,16 +101,16 @@ class AgentObs:
 
 FullObs = Tuple[AgentObs, ...]
 
-AgentReward = Collection[float]
+AgentReward = Sequence[float]
 FullReward = Tuple[AgentReward, ...]
 
 
 class MainActions(IntEnum):
     NOOP = 0
-    FORWARD = 1
-    BACK = 2
-    LEFT = 3
-    RIGHT = 4
+    FORWARD = 1  # forward, right, back, left should be grouped in this order
+    RIGHT = 2
+    BACK = 3
+    LEFT = 4
     ATTACK = 5
     CHARGE = 6
     BLOCK = 7
@@ -119,14 +119,21 @@ class MainActions(IntEnum):
 
 class TurnActions(IntEnum):
     NOOP = 0  # keeps agent in same direction
-    LEFT = 1
-    RIGHT = 2
-    BACK = 3
+    RIGHT = 1
+    BACK = 2
+    LEFT = 3
 
 
-BotAction = list[IntEnum]  # first element is main action, second is turn action
-AgentAction = Collection[BotAction]
+BotAction = list[MainActions, TurnActions]  # first element is main action, second is turn action
+AgentAction = Sequence[BotAction]
 FullAction = Tuple[AgentAction, ...]
+
+
+@dataclass
+class ActionRepr:  # for internal use
+    agent_id: int
+    bot_id: int
+    main_action: MainActions
 
 
 class Cells(IntEnum):
