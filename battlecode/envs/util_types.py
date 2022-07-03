@@ -1,9 +1,9 @@
+from abc import abstractmethod
 from enum import IntEnum
 from dataclasses import dataclass
-from typing import Tuple, TypeVar
-from gym.core import ObsType, ActType
+from typing import Tuple, overload, Iterable
 from numpy import ndarray
-from collections.abc import Collection
+from collections.abc import Collection, MutableSequence
 
 
 @dataclass
@@ -11,11 +11,86 @@ class Bot:
     pos: Tuple[int, int]  # 2d position
     rot: Tuple[int, int]  # rotation in terms of axes (e.g. (0, 1) is facing towards positive axis 1)
     block: bool = False  # whether this bot is blocking or not
+    ammo: int = 0
+    agent_id: int = 0
+    id: int = 0
 
 
-@dataclass
+class Bots(MutableSequence[Bot]):
+    def __init__(self, *bots: Bot):
+        self._bots = list(bots)
+        self._agent_id = 0
+        for i in range(len(self._bots)):
+            self._bots[i].id = i
+            self._bots[i].agent_id = self.agent_id
+
+    def insert(self, index: int, value: Bot) -> None:
+        self._bots.insert(index, value)
+        for i in range(index, len(self._bots)):
+            self._bots[i].id = i
+            self._bots[i].agent_id = self.agent_id
+
+    @property
+    def agent_id(self) -> int:
+        return self._agent_id
+
+    @agent_id.setter
+    def agent_id(self, o: int) -> None:
+        self._agent_id = o
+        for bot in self._bots:
+            bot.agent_id = o
+
+    @overload
+    @abstractmethod
+    def __getitem__(self, s: slice) -> MutableSequence[Bot]:
+        return self._bots[s]
+
+    def __getitem__(self, i: int) -> Bot:
+        return self._bots[i]
+
+    @overload
+    @abstractmethod
+    def __setitem__(self, s: slice, o: Iterable[Bot]) -> None:
+        for i, bot in zip(range(s.start, s.stop, s.step), o):
+            bot.id = i
+            bot.agent_id = self.agent_id
+            self._bots[i] = bot
+
+    def __setitem__(self, i: int, o: Bot) -> None:
+        o.id = i
+        o.agent_id = self.agent_id
+        self._bots[i] = o
+
+    @overload
+    @abstractmethod
+    def __delitem__(self, s: slice) -> None:
+        del self._bots[s]
+        for i in range(s.start, len(self._bots)):
+            self._bots[i].id = i
+
+    def __delitem__(self, i: int) -> None:
+        del self._bots[i]
+        for j in range(i, len(self._bots)):
+            self._bots[j].id = j
+
+    def __len__(self) -> int:
+        return len(self._bots)
+
+
 class Agent:
-    bots: list[Bot]
+    def __init__(self, bots: Bots, agent_id: int = 0):
+        self.bots: Bots = bots
+        self.bots.agent_id = agent_id
+        self.id: int = agent_id
+
+    @property
+    def id(self) -> int:
+        return self._id
+
+    @id.setter
+    def id(self, o: int) -> None:
+        self._id = o
+        self.bots.agent_id = o
 
 
 @dataclass
@@ -54,7 +129,7 @@ AgentAction = Collection[BotAction]
 FullAction = Tuple[AgentAction, ...]
 
 
-class Blocks(IntEnum):
+class Cells(IntEnum):
     EMPTY = 0
     WALL = 1
     UNKNOWN = 2
