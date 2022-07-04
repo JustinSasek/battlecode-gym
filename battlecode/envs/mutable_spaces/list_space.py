@@ -6,10 +6,10 @@ import numpy as np
 
 class List(Space[TypingList[Space]], MutableSequence):
     """
-    A list of simpler spaces.
+    A list of simpler mutable_spaces.
 
     Example usage:
-    self.observation_space = List([spaces.Discrete(2), spaces.Discrete(3)])
+    self.observation_space = List([mutable_spaces.Discrete(2), mutable_spaces.Discrete(3)])
     """
 
     def __init__(
@@ -17,7 +17,7 @@ class List(Space[TypingList[Space]], MutableSequence):
             spaces: list[Space] | None = None,
             seed: list | int | None = None,
     ) -> None:
-        assert isinstance(spaces, list), 'spaces must be a list'
+        assert isinstance(spaces, list), 'mutable_spaces must be a list'
 
         self.spaces = spaces if spaces is not None else []
         for space in spaces:
@@ -33,7 +33,7 @@ class List(Space[TypingList[Space]], MutableSequence):
         seeds = []
         if isinstance(seed, list):
             assert len(seed) == len(self.spaces), print(
-                "Seed list is different size from spaces list.",
+                "Seed list is different size from mutable_spaces list.",
             )
             for space, seed in zip(self.spaces, seed):
                 seeds += space.seed(seed)
@@ -109,7 +109,7 @@ class List(Space[TypingList[Space]], MutableSequence):
         ]
 
     def from_jsonable(self, sample_n: list[list]) -> list:
-        list_of_list: list[list] = []  # first axis is spaces, second is samples
+        list_of_list: list[list] = []  # first axis is mutable_spaces, second is samples
         for i, space in enumerate(self.spaces):
             list_of_list[i] = space.from_jsonable(sample_n[i])
         ret = []

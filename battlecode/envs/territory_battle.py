@@ -1,10 +1,11 @@
 import gym
 from gym import spaces
-from spaces import List
+from .mutable_spaces import List
 import numpy as np
-from util_types import *
+from .util_types import *
 from copy import deepcopy
 from itertools import chain
+from typeguard import check_argument_types
 
 
 class TerritoryBattleMultiEnv(gym.Env):
@@ -161,7 +162,7 @@ class TerritoryBattleMultiEnv(gym.Env):
             'grid': self.grid
         }
 
-    def _valid_cell(self, pos: Sequence[int, int]) -> bool:  # if 2d point is in bounds of the grid
+    def _valid_cell(self, pos: Sequence[int, int] | NDArray[int]) -> bool:  # if 2d point is in bounds of the grid
         for axis in range(2):
             if not 0 <= pos[axis] < self.grid.shape[axis]:  # if out of bounds in some axis
                 return False
@@ -186,21 +187,22 @@ class TerritoryBattleMultiEnv(gym.Env):
             self.grid[bot_init.pos] = self.n_default_cells + i  # fill in all layers with the bot id at its spawn
             self.position_bots[starting_bot.pos] = starting_bot  # update
 
-        self.max_timestep = options.get('max_timestep', self.DEFAULT_MAX_TIMESTEP)
+        self.max_timestep = options['max_timestep']if isinstance(options, dict) and 'max_timestep' in options else \
+            self.DEFAULT_MAX_TIMESTEP
 
         observation = self._get_obs()
         info = self._get_info()
         return (observation, info) if return_info else observation
 
     def step(self, action: FullAction) -> Tuple[FullObs, FullReward, bool, dict]:
-        assert isinstance(spaces, FullAction), \
+        assert check_argument_types(), \
             'action must be a tuple of agent actions, where each agent action is a sequence of bot actions'
 
         # assert there is an action for each agent
         assert len(action) == len(self.agents), 'there must be a set of bot actions for every agent'
 
         # assert there is an action for each bot
-        for agent_id, agent_action, agent in enumerate(zip(action, self.agents)):
+        for agent_id, (agent_action, agent) in enumerate(zip(action, self.agents)):
             assert len(agent_action) == len(agent.bots), \
                 f'there must be an action for every bot, agent {agent_id} does not have the correct amount of actions'
 
@@ -243,9 +245,9 @@ class TerritoryBattleMultiEnv(gym.Env):
         attack_targets = []  # positions that get attacked along with their attackers
         for attack in agent_actions[MainActions.ATTACK]:
             bot = self.agents[attack.agent_id].bots[attack.bot_id]
-            attack_pos = np.array(bot.pos) + np.array(bot.rot)  # cell to attack
+            attack_pos = tuple(np.array(bot.pos) + np.array(bot.rot))  # cell to attack
             if self._valid_cell(attack_pos) and bot.ammo > 0:
-                attack_targets.append((tuple(attack_pos), bot,))  # bot at attack position is target
+                attack_targets.append((attack_pos, bot,))  # bot at attack position is target
             else:  # if not valid attack
                 reward[bot.agent_id][bot.id] += self.REWARDS['miss']
         for attack_pos, attacker in attack_targets:  # delete attacked bots if they are not blocking
@@ -253,9 +255,11 @@ class TerritoryBattleMultiEnv(gym.Env):
                 bot = self.position_bots[attack_pos]
                 del self.position_bots[attack_pos]  # delete position-bot mapping
                 del self.agents[bot.agent_id].bots[bot.id]  # delete bot from agent
+                self.grid[attack_pos][Layers.BOT] = Cells.EMPTY  # delete killed bot from grid
                 for i, bot_action in enumerate(agent_actions[action[bot.agent_id][bot.id][0]]):  # search for killed bot
                     if bot_action.agent_id == bot.agent_id and bot_action.bot_id == bot.id:  # when killed bot found
-                        del agent_actions[action[bot.agent_id][bot.id][0]][i]  # delete killed bot's action
+                        del agent_actions[action[bot.agent_id][bot.id][0]][i]  # delete killed bot's action (1)
+                del action[bot.agent_id][bot.id]  # delete killed bot's action (2)
                 reward[attacker.agent_id][attacker.id] += self.REWARDS['kill']
             else:  # if no bot there or they were blocking
                 reward[attacker.agent_id][attacker.id] += self.REWARDS['miss']
@@ -273,19 +277,19 @@ class TerritoryBattleMultiEnv(gym.Env):
 
         # movement - move if able to
         pending_movements = []
-        for movement in chain([agent_actions[movement] for movement in
-                               [MainActions.FORWARD, MainActions.LEFT, MainActions.RIGHT, MainActions.BACK]]):
+        for movement in chain(*[agent_actions[movement] for movement in
+                                [MainActions.FORWARD, MainActions.LEFT, MainActions.RIGHT, MainActions.BACK]]):
             bot = self.agents[movement.agent_id].bots[movement.bot_id]
             movement_rot = movement.main_action - MainActions.FORWARD
-            new_relative_pos = np.array(
-                bot.rot[axis] * ((bot.rot[axis] + movement_rot) % 2) * (1 - 2 * (movement_rot // 2))
+            new_relative_pos = np.fromiter((
+                (-1 if bot.rot[axis] < 0 else 1) * ((bot.rot[axis] + movement_rot) % 2) * (1 - 2 * (movement_rot // 2))
                 for axis in range(2)
-            )
-            new_pos = np.array(bot.pos) + new_relative_pos  # cell to move to
+            ), dtype=int)
+            new_pos = tuple(np.array(bot.pos) + new_relative_pos)  # cell to move to
             if self._valid_cell(new_pos) and self.grid[new_pos][Layers.BOT] == Cells.EMPTY:
                 pending_movements.append((  # move the bot if the cell it wants to move to is valid (empty, in bounds)
                     bot,
-                    tuple(new_pos),
+                    new_pos,
                 ))
             else:  # if the bot cannot move here
                 reward[bot.agent_id][bot.id] += self.REWARDS['miss_movement']
@@ -301,10 +305,10 @@ class TerritoryBattleMultiEnv(gym.Env):
         for agent_id, agent_action in enumerate(action):
             for bot_id, (main_action, turn_rot) in enumerate(agent_action):
                 bot = self.agents[agent_id].bots[bot_id]
-                bot.rot = np.array(
+                bot.rot = tuple(np.fromiter((
                     bot.rot[axis] * ((bot.rot[axis] + turn_rot) % 2) * (1 - 2 * (turn_rot // 2))
                     for axis in range(2)
-                )
+                ), dtype=int))
 
         # bot creation
 
@@ -327,4 +331,4 @@ class TerritoryBattleMultiEnv(gym.Env):
 a = TerritoryBattleMultiEnv()
 a.reset()
 # print(a.grid[:, :, 1])
-print(a._get_obs()[0].grid[:, :, 0])
+# print(a._get_obs()[0].grid[:, :, 0])

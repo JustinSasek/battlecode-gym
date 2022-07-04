@@ -2,7 +2,7 @@ from abc import abstractmethod
 from enum import IntEnum
 from dataclasses import dataclass
 from typing import Tuple, overload, Iterable
-from numpy import ndarray
+from numpy.typing import NDArray
 from collections.abc import MutableSequence, Sequence
 
 
@@ -95,8 +95,8 @@ class Agent:
 
 @dataclass
 class AgentObs:
-    bots: list[ndarray]
-    grid: ndarray
+    bots: list[NDArray]
+    grid: NDArray
 
 
 FullObs = Tuple[AgentObs, ...]
@@ -124,7 +124,7 @@ class TurnActions(IntEnum):
     LEFT = 3
 
 
-BotAction = list[MainActions, TurnActions]  # first element is main action, second is turn action
+BotAction = Tuple[MainActions, TurnActions] | NDArray[int]  # first element is main action, second is turn action
 AgentAction = Sequence[BotAction]
 FullAction = Tuple[AgentAction, ...]
 
