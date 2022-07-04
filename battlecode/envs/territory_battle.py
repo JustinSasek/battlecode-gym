@@ -50,7 +50,7 @@ class TerritoryBattleMultiEnv(gym.Env):
 
     metadata = {
         'render_modes': ['human', 'rgb_array'],
-        'render_fps': 16
+        'render_fps': 4
     }
     n_layers = len(Layers)
     n_default_cells = len(Cells)
@@ -103,8 +103,8 @@ class TerritoryBattleMultiEnv(gym.Env):
         self.position_bots = {}  # mapping from Tuple(int, int) positions to bots
 
         # tuple of action spaces for each agent, where each agent's action space is a list of bot action spaces
-        # which is initialized with a single bot action space (one bot to start)
-        self.action_space = spaces.Tuple(tuple(List([self.bot_action_space()]) for _ in range(self.n_agents)))
+        self.action_space: spaces.Tuple[List[spaces.MultiDiscrete]] = \
+            spaces.Tuple(tuple(List([]) for _ in range(self.n_agents)))
 
         # tuple of observation spaces for each agent, where each agent's observation space is a dict that includes a
         # limited view of the entire grid and a list of bot observation spaces which is initialized with a single bot
@@ -125,6 +125,10 @@ class TerritoryBattleMultiEnv(gym.Env):
         """
         self.window = None
         self.clock = None
+
+    def agent_action_space(self, agent_id):
+        action_space: List[spaces.MultiDiscrete] = List([self.bot_action_space() for _ in self.agents[agent_id].bots])
+        return action_space
 
     @staticmethod
     def bot_action_space():  # each bot can do a main action and a turn action right after the main
@@ -211,6 +215,9 @@ class TerritoryBattleMultiEnv(gym.Env):
             self.grid[bot_init.pos] = self.n_default_cells + i  # fill in all layers with the bot id at its spawn
             self.position_bots[starting_bot.pos] = starting_bot  # update
 
+        # reset action space
+        self.action_space = spaces.Tuple(tuple(self.agent_action_space(agent_id) for agent_id in range(self.n_agents)))
+
         self.max_timestep = options['max_timestep']if isinstance(options, dict) and 'max_timestep' in options else \
             self.DEFAULT_MAX_TIMESTEP
 
@@ -277,6 +284,7 @@ class TerritoryBattleMultiEnv(gym.Env):
         for attack_pos, attacker in attack_targets:  # delete attacked bots if they are not blocking
             if attack_pos in self.position_bots and not self.position_bots[attack_pos].block:
                 bot = self.position_bots[attack_pos]
+                del self.action_space[bot.agent_id][bot.id]
                 del self.position_bots[attack_pos]  # delete position-bot mapping
                 del self.agents[bot.agent_id].bots[bot.id]  # delete bot from agent
                 self.grid[attack_pos][Layers.BOT] = Cells.EMPTY  # delete killed bot from grid
@@ -300,7 +308,7 @@ class TerritoryBattleMultiEnv(gym.Env):
             reward[bot.agent_id][bot.id] += self.REWARDS['noop']
 
         # movement - move if able to
-        pending_movements = []
+        pending_movements = {}  # tracks which bots want to go to which positions
         for movement in chain(*[agent_actions[movement] for movement in
                                 [MainActions.FORWARD, MainActions.LEFT, MainActions.RIGHT, MainActions.BACK]]):
             bot = self.agents[movement.agent_id].bots[movement.bot_id]
@@ -311,13 +319,14 @@ class TerritoryBattleMultiEnv(gym.Env):
             ), dtype=int)
             new_pos = tuple(np.array(bot.pos) + new_relative_pos)  # cell to move to
             if self._valid_cell(new_pos) and self.grid[new_pos][Layers.BOT] == Cells.EMPTY:
-                pending_movements.append((  # move the bot if the cell it wants to move to is valid (empty, in bounds)
-                    bot,
-                    new_pos,
-                ))
+                if new_pos in pending_movements:  # move the bot if the cell it wants to move to is valid
+                    pending_movements[new_pos].append(bot)
+                else:
+                    pending_movements[new_pos] = [bot]
             else:  # if the bot cannot move here
                 reward[bot.agent_id][bot.id] += self.REWARDS['miss_movement']
-        for bot, new_pos in pending_movements:
+        for new_pos, bots in pending_movements.items():
+            bot = bots[self.np_random.integers(len(bots))]  # pick a random bot to proceed to the spot
             self.grid[bot.pos][Layers.BOT] = Cells.EMPTY
             self.grid[new_pos][Layers.BOT] = self.n_default_cells + bot.agent_id  # update world grid
             del self.position_bots[bot.pos]
