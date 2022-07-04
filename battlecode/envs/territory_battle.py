@@ -306,7 +306,7 @@ class TerritoryBattleMultiEnv(gym.Env):
             for bot_id, (main_action, turn_rot) in enumerate(agent_action):
                 bot = self.agents[agent_id].bots[bot_id]
                 bot.rot = tuple(np.fromiter((
-                    bot.rot[axis] * ((bot.rot[axis] + turn_rot) % 2) * (1 - 2 * (turn_rot // 2))
+                    (-1 if bot.rot[axis] < 0 else 1) * ((bot.rot[axis] + turn_rot) % 2) * (1 - 2 * (turn_rot // 2))
                     for axis in range(2)
                 ), dtype=int))
 
