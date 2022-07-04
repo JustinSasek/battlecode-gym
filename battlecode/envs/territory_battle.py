@@ -6,6 +6,7 @@ from .util_types import *
 from copy import deepcopy
 from itertools import chain
 from typeguard import check_argument_types
+import pygame
 
 
 class TerritoryBattleMultiEnv(gym.Env):
@@ -27,10 +28,29 @@ class TerritoryBattleMultiEnv(gym.Env):
         'claim': 3,
         'kill': 10
     }
+    COLORS = [
+        (255, 255, 255),
+        (50, 50, 50),
+        (127, 127, 127),
+        (255, 0, 0),
+        (0, 0, 255),
+        (0, 255, 0),
+        (255, 255, 0),
+        (0, 255, 255),
+        (255, 0, 255),
+        (255, 127, 0),
+        (127, 255, 0),
+        (0, 127, 255),
+        (255, 0, 127)
+    ]
+    BOT_OUTLINE = {
+        'width': 0.1,  # as a percentage of total cell width
+        'color': (100, 100, 100)
+    }
 
     metadata = {
         'render_modes': ['human', 'rgb_array'],
-        'render_fps': 4
+        'render_fps': 16
     }
     n_layers = len(Layers)
     n_default_cells = len(Cells)
@@ -60,7 +80,11 @@ class TerritoryBattleMultiEnv(gym.Env):
         if isinstance(bot_vision, int):
             bot_vision = (bot_vision, bot_vision)
 
-        self.window_height = window_height
+        self.cell_width = window_height // shape[0]
+        self.cell_size = (self.cell_width, self.cell_width)
+        height = shape[0] * self.cell_width
+        width = self.cell_width * shape[1]
+        self.window_size = (height, width)
         self.bot_vision = bot_vision + (self.n_layers,)
         self.max_ammo = max_ammo
         self.shape = shape + (self.n_layers,)
@@ -326,6 +350,71 @@ class TerritoryBattleMultiEnv(gym.Env):
         info = self._get_info()
 
         return observation, reward, done, info
+
+    def render(self, mode: str = 'human') -> NDArray | None:
+        if self.window is None and mode == 'human':
+            pygame.init()
+            pygame.display.init()
+            self.window = pygame.display.set_mode(self.window_size)
+        if self.clock is None and mode == 'human':
+            self.clock = pygame.time.Clock()
+
+        canvas = pygame.Surface(self.window_size)
+        canvas.fill((255, 255, 255))
+
+        # first we draw in the cells
+        for i, row in enumerate(self.grid[:, :, Layers.GRID]):
+            for j, cell in zip(range(self.grid.shape[1] - 1, 0, -1), row):
+                if cell != Cells.EMPTY:
+                    pygame.draw.rect(
+                        canvas,
+                        self.COLORS[cell],
+                        pygame.Rect(
+                            (i * self.cell_width, j * self.cell_width),
+                            self.cell_size,
+                        ),
+                    )
+        # Now we draw the agent
+        for agent in self.agents:
+            for bot in agent.bots:
+                # draw directional line
+                pygame.draw.line(
+                    canvas,
+                    self.BOT_OUTLINE['color'],
+                    ((bot.pos[0] + 0.5) * self.cell_width, (self.grid.shape[1] - bot.pos[1] - 0.5) * self.cell_width),
+                    ((bot.pos[0] + 0.5 + bot.rot[0]/2) * self.cell_width,
+                     (self.grid.shape[1] - bot.pos[1] - 0.5 - bot.rot[1]/2) * self.cell_width),
+                    width=int(self.cell_width * self.BOT_OUTLINE['width'])
+                )
+                # draw circle
+                pygame.draw.circle(
+                    canvas,
+                    self.COLORS[bot.agent_id + self.n_default_cells],
+                    ((bot.pos[0] + 0.5) * self.cell_width, (self.grid.shape[1] - bot.pos[1] - 0.5) * self.cell_width),
+                    self.cell_width // 3
+                )
+                # draw outline
+                pygame.draw.circle(
+                    canvas,
+                    self.BOT_OUTLINE['color'],
+                    ((bot.pos[0] + 0.5) * self.cell_width, (self.grid.shape[1] - bot.pos[1] - 0.5) * self.cell_width),
+                    self.cell_width // 3,
+                    width=int(self.cell_width * self.BOT_OUTLINE['width'])
+                )
+
+        if mode == 'human':
+            # The following line copies our drawings from `canvas` to the visible window
+            self.window.blit(canvas, canvas.get_rect())
+            pygame.event.pump()
+            pygame.display.update()
+
+            # We need to ensure that human-rendering occurs at the predefined frame rate.
+            # The following line will automatically add a delay to keep the frame rate stable.
+            self.clock.tick(self.metadata["render_fps"])
+        else:  # rgb_array
+            return np.transpose(
+                np.array(pygame.surfarray.pixels3d(canvas)), axes=(1, 0, 2)
+            )
 
 
 a = TerritoryBattleMultiEnv()
