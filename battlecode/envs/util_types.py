@@ -24,6 +24,11 @@ class Bots(MutableSequence[Bot]):
             self._bots[i].id = i
             self._bots[i].agent_id = self.agent_id
 
+    def append(self, value: Bot) -> None:
+        self._bots.append(value)
+        self._bots[-1].id = len(self._bots) - 1
+        self._bots[-1].agent_id = self.agent_id
+
     def insert(self, index: int, value: Bot) -> None:
         self._bots.insert(index, value)
         for i in range(index, len(self._bots)):
@@ -131,8 +136,7 @@ FullAction = Tuple[AgentAction, ...]
 
 @dataclass
 class ActionRepr:  # for internal use
-    agent_id: int
-    bot_id: int
+    bot: Bot
     main_action: MainActions
 
 

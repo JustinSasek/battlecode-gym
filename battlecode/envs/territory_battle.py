@@ -53,6 +53,10 @@ class TerritoryBattleMultiEnv(gym.Env):
         'render_modes': ['human', 'rgb_array'],
         'render_fps': 4
     }
+
+    action_space: spaces.Tuple
+    observation_space: spaces.Tuple
+
     n_layers = len(Layers)
     n_default_cells = len(Cells)
     n_rot_to_rot = {
@@ -67,6 +71,7 @@ class TerritoryBattleMultiEnv(gym.Env):
                  agents_init: Tuple[Bot] = (Bot((0, 2), (1, 0)), Bot((6, 2), (-1, 0))),
                  bot_vision: int | Tuple[int, int] = (3, 3),
                  max_ammo: int = 3,
+                 spawn_chance: float = 0.01,
                  window_height: int = 560,
                  ) -> None:
         """
@@ -78,6 +83,11 @@ class TerritoryBattleMultiEnv(gym.Env):
         :type agents_init: Tuple[Bot], optional
         :param bot_vision: Shape that represents the area the bot can see ahead of itself.
         :type bot_vision: int or Tuple[int, int], optional
+        :param max_ammo: Max ammo that a bot can have to attack with.
+        :type max_ammo: int, optional
+        :param spawn_chance: Probability of a given claimed territory to spawn a bot on a given tick. For some reason
+        this breaks the reproducibility of np.random_seed when its nonzero.
+        :type spawn_chance: float, optional
         :param window_height: Height of the pygame window in human-mode.
         :type window_height: int, optional
         """
@@ -94,6 +104,7 @@ class TerritoryBattleMultiEnv(gym.Env):
         self.window_size = (height, width)
         self.bot_vision = bot_vision + (self.n_layers,)
         self.max_ammo = max_ammo
+        self.spawn_chance = spawn_chance
         self.shape = shape + (self.n_layers,)
         self.max_timestep = self.DEFAULT_MAX_TIMESTEP
         self.timestep = 0
@@ -110,8 +121,7 @@ class TerritoryBattleMultiEnv(gym.Env):
         self.position_bots = {}  # mapping from Tuple(int, int) positions to bots
 
         # tuple of action spaces for each agent, where each agent's action space is a list of bot action spaces
-        self.action_space: spaces.Tuple[List[spaces.MultiDiscrete]] = \
-            spaces.Tuple(tuple(List([]) for _ in range(self.n_agents)))
+        self.action_space = spaces.Tuple(tuple(List([]) for _ in range(self.n_agents)))
 
         # tuple of observation spaces for each agent, where each agent's observation space is a dict that includes a
         # limited view of the entire grid and a list of bot observation spaces which is initialized with a single bot
@@ -228,7 +238,7 @@ class TerritoryBattleMultiEnv(gym.Env):
             self.position_bots[starting_bot.pos] = starting_bot  # update
 
         # reset action space
-        self.action_space = spaces.Tuple(tuple(
+        self.action_space: spaces.Tuple[List[spaces.MultiDiscrete]] = spaces.Tuple(tuple(
             self.agent_action_space(agent_id, seed) for agent_id in range(self.n_agents)
         ))
 
@@ -279,15 +289,15 @@ class TerritoryBattleMultiEnv(gym.Env):
         agent_actions = {action_type: [] for action_type in MainActions}
         for agent_id, agent_action in enumerate(action):
             for bot_id, (main_action, turn_action) in enumerate(agent_action):
-                agent_actions[main_action].append(ActionRepr(agent_id, bot_id, main_action))
+                agent_actions[main_action].append(ActionRepr(self.agents[agent_id].bots[bot_id], main_action))
 
         # block/charge - just apply block/charge actions
         for block in agent_actions[MainActions.BLOCK]:
-            bot = self.agents[block.agent_id].bots[block.bot_id]
+            bot = block.bot
             bot.block = True  # bot is now blocking
             reward[bot.agent_id][bot.id] += self.REWARDS['block']
         for charge in agent_actions[MainActions.CHARGE]:
-            bot = self.agents[charge.agent_id].bots[charge.bot_id]
+            bot = charge.bot
             if bot.ammo < self.max_ammo:
                 bot.ammo += 1
                 reward[bot.agent_id][bot.id] += self.REWARDS['charge']
@@ -295,7 +305,7 @@ class TerritoryBattleMultiEnv(gym.Env):
         # attack - go through each action and store bots that get successfully attacked, then delete them
         attack_targets = []  # positions that get attacked along with their attackers
         for attack in agent_actions[MainActions.ATTACK]:
-            bot = self.agents[attack.agent_id].bots[attack.bot_id]
+            bot = attack.bot
             attack_pos = tuple(np.array(bot.pos) + np.array(bot.rot))  # cell to attack
             if self._valid_cell(attack_pos) and bot.ammo > 0:
                 attack_targets.append((attack_pos, bot,))  # bot at attack position is target
@@ -304,12 +314,12 @@ class TerritoryBattleMultiEnv(gym.Env):
         for attack_pos, attacker in attack_targets:  # delete attacked bots if they are not blocking
             if attack_pos in self.position_bots and not self.position_bots[attack_pos].block:
                 bot = self.position_bots[attack_pos]
-                del self.action_space[bot.agent_id][bot.id]
+                del self.action_space[bot.agent_id][bot.id]  # delete bot from action space
                 del self.position_bots[attack_pos]  # delete position-bot mapping
                 del self.agents[bot.agent_id].bots[bot.id]  # delete bot from agent
                 self.grid[attack_pos][Layers.BOT] = Cells.EMPTY  # delete killed bot from grid
                 for i, bot_action in enumerate(agent_actions[action[bot.agent_id][bot.id][0]]):  # search for killed bot
-                    if bot_action.agent_id == bot.agent_id and bot_action.bot_id == bot.id:  # when killed bot found
+                    if bot_action.bot == bot:  # when killed bot found
                         del agent_actions[action[bot.agent_id][bot.id][0]][i]  # delete killed bot's action (1)
                 del action[bot.agent_id][bot.id]  # delete killed bot's action (2)
                 reward[attacker.agent_id][attacker.id] += self.REWARDS['kill']
@@ -318,23 +328,23 @@ class TerritoryBattleMultiEnv(gym.Env):
 
         # unblock/claim/noop - unblock if bot is blocking and claim territory/noop
         for block in agent_actions[MainActions.BLOCK]:
-            self.agents[block.agent_id].bots[block.bot_id].block = False  # bot is no longer blocking
+            self.agents[block.bot.agent_id].bots[block.bot.id].block = False  # bot is no longer blocking
         for claim in agent_actions[MainActions.CLAIM]:
-            bot = self.agents[claim.agent_id].bots[claim.bot_id]
-            if self.grid[bot.pos][Layers.GRID] == claim.agent_id + self.n_default_cells:  # if already claimed
+            bot = claim.bot
+            if self.grid[bot.pos][Layers.GRID] == bot.agent_id + self.n_default_cells:  # if already claimed
                 reward[bot.agent_id][bot.id] += self.REWARDS['fail_claim']
             else:  # if not claimed yet, we can claim
-                self.grid[bot.pos][Layers.GRID] = claim.agent_id + self.n_default_cells  # claim grid cell
+                self.grid[bot.pos][Layers.GRID] = bot.agent_id + self.n_default_cells  # claim grid cell
                 reward[bot.agent_id][bot.id] += self.REWARDS['claim']
         for noop in agent_actions[MainActions.NOOP]:
-            bot = self.agents[noop.agent_id].bots[noop.bot_id]
+            bot = noop.bot
             reward[bot.agent_id][bot.id] += self.REWARDS['noop']
 
         # movement - move if able to
         pending_movements = {}  # tracks which bots want to go to which positions
         for movement in chain(*[agent_actions[movement] for movement in
                                 [MainActions.FORWARD, MainActions.LEFT, MainActions.RIGHT, MainActions.BACK]]):
-            bot = self.agents[movement.agent_id].bots[movement.bot_id]
+            bot = movement.bot
             movement_rot = movement.main_action - MainActions.FORWARD
             new_relative_pos = np.array(self._new_relative_rot(bot, movement_rot), dtype=int)
             new_pos = tuple(np.array(bot.pos) + new_relative_pos)  # cell to move to
@@ -361,6 +371,17 @@ class TerritoryBattleMultiEnv(gym.Env):
                 bot.rot = tuple(np.array(self._new_relative_rot(bot, turn_rot), dtype=int))
 
         # bot creation
+        for i, row in enumerate(self.grid):
+            for j, cell in enumerate(row):
+                if cell[Layers.GRID] >= self.n_default_cells and cell[Layers.BOT] == Cells.EMPTY:
+                    agent_id = cell[Layers.GRID] - self.n_default_cells
+                    rand = self.np_random.uniform(low=0, high=1, size=1)  # if cell is claimed and no bot is on it
+                    if rand < self.spawn_chance:  # if we get lucky and get to spawn a bot here
+                        bot = Bot(pos=(i, j), rot=self.agents_init[agent_id].rot)
+                        self.action_space[agent_id].append(self.bot_action_space())  # add to action space
+                        self.position_bots[(i, j)] = bot  # add position-bot mapping
+                        self.agents[agent_id].bots.append(bot)  # add bot to agent
+                        self.grid[i, j, Layers.BOT] = self.n_default_cells + agent_id  # add bot to grid
 
         # observation
         self.timestep += 1
@@ -374,6 +395,7 @@ class TerritoryBattleMultiEnv(gym.Env):
 
         observation = self._get_obs()
         info = self._get_info()
+
 
         return observation, reward, done, info
 
