@@ -20,10 +20,11 @@ class TerritoryBattleMultiEnv(gym.Env):
     REWARDS = {
         'death': -5,
         'block': 0,
-        'miss': 0,
         'noop': 0,
-        'miss_movement': 0,
         'movement': 0,
+        'fail_movement': 0,
+        'fail_attack': 0,
+        'fail_claim': 0,
         'charge': 1,
         'claim': 3,
         'kill': 10
@@ -54,6 +55,12 @@ class TerritoryBattleMultiEnv(gym.Env):
     }
     n_layers = len(Layers)
     n_default_cells = len(Cells)
+    n_rot_to_rot = {
+        0: (1, 0),
+        1: (0, 1),
+        2: (-1, 0),
+        3: (0, -1),
+    }
 
     def __init__(self,
                  shape: int | Tuple[int, int] = (7, 5),
@@ -126,8 +133,9 @@ class TerritoryBattleMultiEnv(gym.Env):
         self.window = None
         self.clock = None
 
-    def agent_action_space(self, agent_id):
-        action_space: List[spaces.MultiDiscrete] = List([self.bot_action_space() for _ in self.agents[agent_id].bots])
+    def agent_action_space(self, agent_id: int, seed: int | None = None):
+        action_space: List[spaces.MultiDiscrete] = List([self.bot_action_space() for _ in self.agents[agent_id].bots],
+                                                        seed=seed)
         return action_space
 
     @staticmethod
@@ -165,7 +173,7 @@ class TerritoryBattleMultiEnv(gym.Env):
                 bot_view_global[view_intersect[0], view_intersect[1]] = \
                     self.grid[grid_intersect[0], grid_intersect[1]]
 
-                n_rotations = abs(bot.rot[0] + 2 * bot.rot[1] - 1)  # how to rotate from world to local coordinates
+                n_rotations = self._rot_to_n(bot.rot)  # how to rotate from world to local coordinates
                 bot_view = np.rot90(bot_view_global, n_rotations)  # relative bot view
 
                 # very crude shadow casting time, just cast shadows vertically from perspective of bot
@@ -184,6 +192,10 @@ class TerritoryBattleMultiEnv(gym.Env):
             agent_observations.append(agent_observation)
 
         return tuple(agent_observations)
+
+    @staticmethod
+    def _rot_to_n(rot):
+        return abs(rot[0] + 2 * rot[1] - 1)
 
     def _get_info(self) -> dict:
         return {
@@ -216,7 +228,9 @@ class TerritoryBattleMultiEnv(gym.Env):
             self.position_bots[starting_bot.pos] = starting_bot  # update
 
         # reset action space
-        self.action_space = spaces.Tuple(tuple(self.agent_action_space(agent_id) for agent_id in range(self.n_agents)))
+        self.action_space = spaces.Tuple(tuple(
+            self.agent_action_space(agent_id, seed) for agent_id in range(self.n_agents)
+        ))
 
         self.max_timestep = options['max_timestep']if isinstance(options, dict) and 'max_timestep' in options else \
             self.DEFAULT_MAX_TIMESTEP
@@ -224,6 +238,12 @@ class TerritoryBattleMultiEnv(gym.Env):
         observation = self._get_obs()
         info = self._get_info()
         return (observation, info) if return_info else observation
+
+    @staticmethod
+    def _new_relative_rot(bot: Bot, rot_n: int) -> Tuple[int, int]:
+        bot_rot_n = TerritoryBattleMultiEnv._rot_to_n(bot.rot)
+        new_rot_n = (bot_rot_n + rot_n) % 4
+        return TerritoryBattleMultiEnv.n_rot_to_rot[new_rot_n]
 
     def step(self, action: FullAction) -> Tuple[FullObs, FullReward, bool, dict]:
         assert check_argument_types(), \
@@ -280,7 +300,7 @@ class TerritoryBattleMultiEnv(gym.Env):
             if self._valid_cell(attack_pos) and bot.ammo > 0:
                 attack_targets.append((attack_pos, bot,))  # bot at attack position is target
             else:  # if not valid attack
-                reward[bot.agent_id][bot.id] += self.REWARDS['miss']
+                reward[bot.agent_id][bot.id] += self.REWARDS['fail_attack']
         for attack_pos, attacker in attack_targets:  # delete attacked bots if they are not blocking
             if attack_pos in self.position_bots and not self.position_bots[attack_pos].block:
                 bot = self.position_bots[attack_pos]
@@ -294,15 +314,18 @@ class TerritoryBattleMultiEnv(gym.Env):
                 del action[bot.agent_id][bot.id]  # delete killed bot's action (2)
                 reward[attacker.agent_id][attacker.id] += self.REWARDS['kill']
             else:  # if no bot there or they were blocking
-                reward[attacker.agent_id][attacker.id] += self.REWARDS['miss']
+                reward[attacker.agent_id][attacker.id] += self.REWARDS['fail_attack']
 
         # unblock/claim/noop - unblock if bot is blocking and claim territory/noop
         for block in agent_actions[MainActions.BLOCK]:
             self.agents[block.agent_id].bots[block.bot_id].block = False  # bot is no longer blocking
         for claim in agent_actions[MainActions.CLAIM]:
             bot = self.agents[claim.agent_id].bots[claim.bot_id]
-            self.grid[bot.pos][Layers.GRID] = claim.agent_id + self.n_default_cells  # grid cell now belongs to agent
-            reward[bot.agent_id][bot.id] += self.REWARDS['claim']
+            if self.grid[bot.pos][Layers.GRID] == claim.agent_id + self.n_default_cells:  # if already claimed
+                reward[bot.agent_id][bot.id] += self.REWARDS['fail_claim']
+            else:  # if not claimed yet, we can claim
+                self.grid[bot.pos][Layers.GRID] = claim.agent_id + self.n_default_cells  # claim grid cell
+                reward[bot.agent_id][bot.id] += self.REWARDS['claim']
         for noop in agent_actions[MainActions.NOOP]:
             bot = self.agents[noop.agent_id].bots[noop.bot_id]
             reward[bot.agent_id][bot.id] += self.REWARDS['noop']
@@ -313,10 +336,7 @@ class TerritoryBattleMultiEnv(gym.Env):
                                 [MainActions.FORWARD, MainActions.LEFT, MainActions.RIGHT, MainActions.BACK]]):
             bot = self.agents[movement.agent_id].bots[movement.bot_id]
             movement_rot = movement.main_action - MainActions.FORWARD
-            new_relative_pos = np.fromiter((
-                (-1 if bot.rot[axis] < 0 else 1) * ((bot.rot[axis] + movement_rot) % 2) * (1 - 2 * (movement_rot // 2))
-                for axis in range(2)
-            ), dtype=int)
+            new_relative_pos = np.array(self._new_relative_rot(bot, movement_rot), dtype=int)
             new_pos = tuple(np.array(bot.pos) + new_relative_pos)  # cell to move to
             if self._valid_cell(new_pos) and self.grid[new_pos][Layers.BOT] == Cells.EMPTY:
                 if new_pos in pending_movements:  # move the bot if the cell it wants to move to is valid
@@ -324,7 +344,7 @@ class TerritoryBattleMultiEnv(gym.Env):
                 else:
                     pending_movements[new_pos] = [bot]
             else:  # if the bot cannot move here
-                reward[bot.agent_id][bot.id] += self.REWARDS['miss_movement']
+                reward[bot.agent_id][bot.id] += self.REWARDS['fail_movement']
         for new_pos, bots in pending_movements.items():
             bot = bots[self.np_random.integers(len(bots))]  # pick a random bot to proceed to the spot
             self.grid[bot.pos][Layers.BOT] = Cells.EMPTY
@@ -338,10 +358,7 @@ class TerritoryBattleMultiEnv(gym.Env):
         for agent_id, agent_action in enumerate(action):
             for bot_id, (main_action, turn_rot) in enumerate(agent_action):
                 bot = self.agents[agent_id].bots[bot_id]
-                bot.rot = tuple(np.fromiter((
-                    (-1 if bot.rot[axis] < 0 else 1) * ((bot.rot[axis] + turn_rot) % 2) * (1 - 2 * (turn_rot // 2))
-                    for axis in range(2)
-                ), dtype=int))
+                bot.rot = tuple(np.array(self._new_relative_rot(bot, turn_rot), dtype=int))
 
         # bot creation
 
@@ -373,7 +390,8 @@ class TerritoryBattleMultiEnv(gym.Env):
 
         # first we draw in the cells
         for i, row in enumerate(self.grid[:, :, Layers.GRID]):
-            for j, cell in zip(range(self.grid.shape[1] - 1, 0, -1), row):
+            for _j, cell in enumerate(row):
+                j = self.grid.shape[1] - _j - 1  # flip y axis
                 if cell != Cells.EMPTY:
                     pygame.draw.rect(
                         canvas,
