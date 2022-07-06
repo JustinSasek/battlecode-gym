@@ -68,7 +68,7 @@ class TerritoryBattleMultiEnv(gym.Env):
 
     def __init__(self,
                  shape: int | Tuple[int, int] = (7, 5),
-                 agents_init: Tuple[Bot] = (Bot((0, 2), (1, 0)), Bot((6, 2), (-1, 0))),
+                 agents_init: Tuple[Bot, ...] = (Bot((0, 2), (1, 0)), Bot((6, 2), (-1, 0))),
                  bot_vision: int | Tuple[int, int] = (3, 3),
                  max_ammo: int = 3,
                  spawn_chance: float = 0.01,
@@ -80,13 +80,13 @@ class TerritoryBattleMultiEnv(gym.Env):
         :param shape: The 2d shape of the environment.
         :type shape: int or Tuple[int, int], optional
         :param agents_init: An n-tuple of 2-tuples, creates n agents with bots at given 2-tuple spawn point.
-        :type agents_init: Tuple[Bot], optional
+        :type agents_init: Tuple[Bot, ...], optional
         :param bot_vision: Shape that represents the area the bot can see ahead of itself.
         :type bot_vision: int or Tuple[int, int], optional
         :param max_ammo: Max ammo that a bot can have to attack with.
         :type max_ammo: int, optional
         :param spawn_chance: Probability of a given claimed territory to spawn a bot on a given tick. For some reason
-        this breaks the reproducibility of np.random_seed when its nonzero.
+        this breaks the reproducibility of np.random_seed when it's nonzero.
         :type spawn_chance: float, optional
         :param window_height: Height of the pygame window in human-mode.
         :type window_height: int, optional
@@ -464,6 +464,11 @@ class TerritoryBattleMultiEnv(gym.Env):
             return np.transpose(
                 np.array(pygame.surfarray.pixels3d(canvas)), axes=(1, 0, 2)
             )
+
+    def close(self):
+        if self.window is not None:
+            pygame.display.quit()
+            pygame.quit()
 
 
 a = TerritoryBattleMultiEnv()
