@@ -52,52 +52,8 @@ class TerritoryBattleSingleEnv(TerritoryBattleMultiEnv):
             ),
         })
 
-    def _get_obs(self) -> FullObs:
-        agent_observations = []
-        for agent in self.agents:
-            agent_view = np.full_like(self.grid, Cells.UNKNOWN)  # all unknown by default
-            agent_observation = AgentObs([], agent_view)
-
-            for bot in agent.bots:
-                view_size = tuple(self.bot_vision[:2][bot.rot[1 - i]] for i in range(2))
-                view_offset = tuple((view_size_axis - 1) // 2 for view_size_axis in view_size)
-                view_pos = tuple(bot.pos[i] + view_offset[i] * (bot.rot[i] - 1) for i in range(2))
-
-                bot_view_global = np.full(view_size + (self.n_layers,), Cells.UNKNOWN)  # bot view in global coords
-
-                grid_intersect = (  # area of intersection between global grid and bot view, global perspective
-                    slice(max(0, view_pos[0]), min(self.grid.shape[0], view_pos[0] + view_size[0])),
-                    slice(max(0, view_pos[1]), min(self.grid.shape[1], view_pos[1] + view_size[1]))
-                )
-                view_intersect = (  # area of intersection between global grid and bot view, local perspective
-                    slice(max(0, -view_pos[0]),
-                          view_size[0] + min(0, self.grid.shape[0] - (view_pos[0] + view_size[0]))),
-                    slice(max(0, -view_pos[1]),
-                          view_size[1] + min(0, self.grid.shape[1] - (view_pos[1] + view_size[1]))),
-                )
-
-                bot_view_global[view_intersect[0], view_intersect[1]] = \
-                    self.grid[grid_intersect[0], grid_intersect[1]]
-
-                n_rotations = self._rot_to_n(bot.rot)  # how to rotate from world to local coordinates
-                bot_view = np.rot90(bot_view_global, n_rotations)  # relative bot view
-
-                # very crude shadow casting time, just cast shadows vertically from perspective of bot
-                # if you want to take the time to rly make this accurate, have at it:
-                # https://ir.lib.uwo.ca/cgi/viewcontent.cgi?article=8883&context=etd
-                for axis_0 in bot_view:
-                    for j in range(bot_view.shape[1] - 1):  # walls in last layer cannot cast shadows
-                        if axis_0[j, 0] == Cells.WALL:
-                            axis_0[j + 1:] = Cells.UNKNOWN  # every block after this one in 1-axis is unknown
-
-                bot_view_global = np.rot90(bot_view, -n_rotations)  # sending shadow casting result back to world
-                agent_view[grid_intersect[0], grid_intersect[1]] = \
-                    bot_view_global[view_intersect[0], view_intersect[1]]
-
-                agent_observation.bots.append(bot_view)
-            agent_observations.append(agent_observation)
-
-        return tuple(agent_observations)
+    def _get_obs(self) -> AgentObs:
+        return super()._get_obs()[0]
 
     def reset(self,
               *,
