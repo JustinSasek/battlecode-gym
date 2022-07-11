@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from typing import Tuple, overload, Iterable
 from numpy.typing import NDArray
 from collections.abc import MutableSequence, Sequence
-from .mutable_spaces import List
 
 
 @dataclass
@@ -133,17 +132,6 @@ class TurnActions(IntEnum):
 BotAction = Tuple[MainActions, TurnActions] | NDArray[int]  # first element is main action, second is turn action
 AgentAction = Sequence[BotAction]
 FullAction = Tuple[AgentAction, ...]
-
-
-class AgentPolicy:
-    # action_space should be consistent with observation
-    def produce_action(self, obs: AgentObs, action_space: List) -> AgentAction:
-        assert len(obs.bots) == len(action_space), 'observation and action space must have the same number of bots!'
-
-        return action_space.sample()
-
-    def process_transition(self, old_obs: AgentObs, action: AgentAction, reward: AgentReward, obs: AgentObs) -> None:
-        pass
 
 
 @dataclass

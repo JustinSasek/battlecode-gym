@@ -1,7 +1,8 @@
 from gym import spaces
-from .mutable_spaces import List
 import numpy as np
-from .util_types import *
+from ..util import Bot, FullObs, AgentObs, AgentReward, AgentPolicy, AgentAction
+from typing import Tuple
+from battlecode.mutable_spaces import List
 from .territory_battle import TerritoryBattleMultiEnv
 
 

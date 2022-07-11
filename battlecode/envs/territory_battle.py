@@ -1,8 +1,11 @@
 import gym
 from gym import spaces
 import numpy as np
-from .util_types import *
-from .mutable_spaces import List
+from ..util import *
+from typing import Tuple
+from numpy.typing import NDArray
+from collections.abc import Sequence
+from battlecode.mutable_spaces import List
 from copy import deepcopy
 from itertools import chain
 from typeguard import check_argument_types
