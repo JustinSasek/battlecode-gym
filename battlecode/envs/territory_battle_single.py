@@ -45,8 +45,6 @@ class TerritoryBattleSingleEnv(TerritoryBattleMultiEnv):
 
         assert len(agent_policies) == len(agents_init) - 1, 'agent_policies and agents_init must have the same ' \
                                                             'number of agents!'
-        # a list of bot action spaces
-        self.action_space = List([])
 
         # a limited view of the entire grid and a list of bot observation spaces which is initialized with a single bot
         # observation space (one bot to start)
@@ -61,6 +59,10 @@ class TerritoryBattleSingleEnv(TerritoryBattleMultiEnv):
         self.agent_policies: Tuple[AgentPolicy, ...] = agent_policies
         self.last_obs = None
 
+    @property
+    def action_space(self):
+        return self._action_space[self.agent_id]
+
     def reset(self,
               *,
               seed: int | None = None,
@@ -69,8 +71,6 @@ class TerritoryBattleSingleEnv(TerritoryBattleMultiEnv):
               ) -> FullObs | Tuple[FullObs, dict]:
         reset_info = super().reset(seed=seed, return_info=return_info, options=options)
 
-        # reset action space
-        self.action_space: List[spaces.MultiDiscrete] = self.agent_action_space(self.agent_id, seed)
         self.last_obs = reset_info[0] if return_info else reset_info
 
         return reset_info
@@ -84,9 +84,8 @@ class TerritoryBattleSingleEnv(TerritoryBattleMultiEnv):
                 continue
             elif i > self.agent_id:
                 agent_policy_id -= 1
-            # TODO: get proper agent action space instead of generating with self.agent_action_space
-            actions.append(self.agent_policies[agent_policy_id].produce_action(self.last_obs[i],
-                                                                               self.agent_action_space(i, self.seed)))
+
+            actions.append(self.agent_policies[agent_policy_id].produce_action(self.last_obs[i], self._action_space[i]))
 
         observation, reward, done, info = super().step(tuple(actions))
 

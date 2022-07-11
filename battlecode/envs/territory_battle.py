@@ -1,8 +1,8 @@
 import gym
 from gym import spaces
-from .mutable_spaces import List
 import numpy as np
 from .util_types import *
+from .mutable_spaces import List
 from copy import deepcopy
 from itertools import chain
 from typeguard import check_argument_types
@@ -122,7 +122,7 @@ class TerritoryBattleMultiEnv(gym.Env):
         self.position_bots = {}  # mapping from Tuple(int, int) positions to bots
 
         # tuple of action spaces for each agent, where each agent's action space is a list of bot action spaces
-        self.action_space = spaces.Tuple(tuple(List([]) for _ in range(self.n_agents)))
+        self._action_space = spaces.Tuple(tuple(List([]) for _ in range(self.n_agents)))
 
         # tuple of observation spaces for each agent, where each agent's observation space is a dict that includes a
         # limited view of the entire grid and a list of bot observation spaces which is initialized with a single bot
@@ -240,7 +240,7 @@ class TerritoryBattleMultiEnv(gym.Env):
             self.position_bots[starting_bot.pos] = starting_bot  # update
 
         # reset action space
-        self.action_space: spaces.Tuple[List[spaces.MultiDiscrete]] = spaces.Tuple(tuple(
+        self._action_space: spaces.Tuple[List[spaces.MultiDiscrete]] = spaces.Tuple(tuple(
             self.agent_action_space(agent_id, seed) for agent_id in range(self.n_agents)
         ))
 
@@ -250,6 +250,14 @@ class TerritoryBattleMultiEnv(gym.Env):
         observation = self._get_obs()
         info = self._get_info()
         return (observation, info) if return_info else observation
+
+    @property
+    def action_space(self):
+        return self._action_space
+
+    @action_space.setter
+    def action_space(self, space):
+        self._action_space = space
 
     @staticmethod
     def _new_relative_rot(bot: Bot, rot_n: int) -> Tuple[int, int]:
@@ -316,7 +324,7 @@ class TerritoryBattleMultiEnv(gym.Env):
         for attack_pos, attacker in attack_targets:  # delete attacked bots if they are not blocking
             if attack_pos in self.position_bots and not self.position_bots[attack_pos].block:
                 bot = self.position_bots[attack_pos]
-                del self.action_space[bot.agent_id][bot.id]  # delete bot from action space
+                del self._action_space[bot.agent_id][bot.id]  # delete bot from action space
                 del self.position_bots[attack_pos]  # delete position-bot mapping
                 del self.agents[bot.agent_id].bots[bot.id]  # delete bot from agent
                 self.grid[attack_pos][Layers.BOT] = Cells.EMPTY  # delete killed bot from grid
@@ -380,7 +388,7 @@ class TerritoryBattleMultiEnv(gym.Env):
                     rand = self.np_random.uniform(low=0, high=1, size=1)  # if cell is claimed and no bot is on it
                     if rand < self.spawn_chance:  # if we get lucky and get to spawn a bot here
                         bot = Bot(pos=(i, j), rot=self.agents_init[agent_id].rot)
-                        self.action_space[agent_id].append(self.bot_action_space())  # add to action space
+                        self._action_space[agent_id].append(self.bot_action_space())  # add to action space
                         self.position_bots[(i, j)] = bot  # add position-bot mapping
                         self.agents[agent_id].bots.append(bot)  # add bot to agent
                         self.grid[i, j, Layers.BOT] = self.n_default_cells + agent_id  # add bot to grid
