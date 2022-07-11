@@ -1,5 +1,5 @@
 from .types import Bot, Bots, Agent, AgentObs, FullObs, BotAction, AgentAction, FullAction, AgentReward, FullReward, \
-    MainActions, TurnActions, ActionRepr, Cells, Layers
+    MainActions, TurnActions, ActionRepr, Cells, Layers, RewardType, BotReward
 from .policy import AgentPolicy
 
 __all__ = [
@@ -19,4 +19,6 @@ __all__ = [
     "Cells",
     "Layers",
     "AgentPolicy",
+    "RewardType",
+    "BotReward",
 ]

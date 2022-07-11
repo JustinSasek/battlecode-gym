@@ -1,9 +1,12 @@
 from abc import abstractmethod
 from enum import IntEnum
 from dataclasses import dataclass
-from typing import Tuple, overload, Iterable
+from typing import Tuple, overload, Iterable, TypeVar
 from numpy.typing import NDArray
 from collections.abc import MutableSequence, Sequence
+from gym.core import ObsType, ActType
+
+RewardType = TypeVar('RewardType')
 
 
 @dataclass
@@ -99,15 +102,17 @@ class Agent:
 
 
 @dataclass
-class AgentObs:
+class AgentObs(ObsType):
     bots: list[NDArray]
     grid: NDArray
 
 
 FullObs = Tuple[AgentObs, ...]
 
-AgentReward = Sequence[float]
-FullReward = Tuple[AgentReward, ...]
+BotReward: RewardType = float
+
+AgentReward: RewardType = Sequence[float]
+FullReward: RewardType = Tuple[AgentReward, ...]
 
 
 class MainActions(IntEnum):
@@ -129,7 +134,7 @@ class TurnActions(IntEnum):
     LEFT = 3
 
 
-BotAction = Tuple[MainActions, TurnActions] | NDArray[int]  # first element is main action, second is turn action
+BotAction: ActType = Tuple[MainActions, TurnActions] | NDArray[int]  # first int is main action, second is turn action
 AgentAction = Sequence[BotAction]
 FullAction = Tuple[AgentAction, ...]
 

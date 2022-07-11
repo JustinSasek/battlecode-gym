@@ -28,7 +28,6 @@ class List(Space[TypingList[Space]], MutableSequence):
             None, None, seed  # type: ignore
         )  # None for shape and dtype, since it'll require special handling
 
-
     def seed(self, seed: list | int | None = None) -> list:
         seeds = []
         if isinstance(seed, list):

@@ -3,12 +3,12 @@ import numpy as np
 from ..util import Bot, FullObs, AgentObs, AgentReward, AgentPolicy, AgentAction
 from typing import Tuple
 from battlecode.mutable_spaces import List
-from . import TerritoryBattleMultiEnv
+from . import TerritoryBattleSingleEnv
 
 
-class TerritoryBattleSingleEnv(TerritoryBattleMultiEnv):
-    action_space: List
-    observation_space: spaces.Dict
+class TerritoryBattleBotSingleEnv(TerritoryBattleSingleEnv):
+    action_space: spaces.MultiDiscrete
+    observation_space: spaces.MultiDiscrete
 
     def __init__(self,
                  agent_policies: Tuple[AgentPolicy, ...],
@@ -49,12 +49,7 @@ class TerritoryBattleSingleEnv(TerritoryBattleMultiEnv):
 
         # a limited view of the entire grid and a list of bot observation spaces which is initialized with a single bot
         # observation space (one bot to start)
-        self.observation_space = spaces.Dict({
-            'bots': List([self.bot_observation_space()]),
-            'grid': spaces.MultiDiscrete(  # grid array + extra axis (of size 2) to hold the grid view and bot view
-                np.full(self.shape, self.n_agents + self.n_default_cells),
-            ),
-        })
+        self.observation_space = self.bot_observation_space()
 
         self.agent_id = agent_id
         self.agent_policies: Tuple[AgentPolicy, ...] = agent_policies
