@@ -1,7 +1,8 @@
 import gym
-from battlecode.envs import TerritoryBattleMultiEnv, MainActions, TurnActions
+from battlecode.envs import *
 # env = gym.make('CartPole-v1')
-env = TerritoryBattleMultiEnv()
+other_agent_policy = AgentPolicy()
+env = TerritoryBattleSingleEnv((other_agent_policy,))
 env.reset(seed=1)
 for _ in range(1000):
     env.render()

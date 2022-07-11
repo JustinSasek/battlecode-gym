@@ -1,0 +1,5 @@
+gym~=0.24.1
+setuptools~=60.2.0
+numpy~=1.23.1
+pygame~=2.1.2
+typeguard~=2.13.3

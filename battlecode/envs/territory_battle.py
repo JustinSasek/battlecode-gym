@@ -108,6 +108,7 @@ class TerritoryBattleMultiEnv(gym.Env):
         self.shape = shape + (self.n_layers,)
         self.max_timestep = self.DEFAULT_MAX_TIMESTEP
         self.timestep = 0
+        self.seed = None
 
         self.n_agents = len(agents_init)
 
@@ -229,6 +230,7 @@ class TerritoryBattleMultiEnv(gym.Env):
 
         self.grid.fill(Cells.EMPTY)  # reset grid
         self.position_bots.clear()  # reset position-bot mapping
+        self.seed = seed
 
         for i, bot_init in enumerate(self.agents_init):
             self.agents[i].bots.clear()  # remove all bots and add in initial bot
@@ -396,7 +398,6 @@ class TerritoryBattleMultiEnv(gym.Env):
         observation = self._get_obs()
         info = self._get_info()
 
-
         return observation, reward, done, info
 
     def render(self, mode: str = 'human') -> NDArray | None:
@@ -469,9 +470,3 @@ class TerritoryBattleMultiEnv(gym.Env):
         if self.window is not None:
             pygame.display.quit()
             pygame.quit()
-
-
-a = TerritoryBattleMultiEnv()
-a.reset()
-# print(a.grid[:, :, 1])
-# print(a._get_obs()[0].grid[:, :, 0])
