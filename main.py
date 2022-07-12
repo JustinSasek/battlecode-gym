@@ -2,8 +2,8 @@ import gym
 from battlecode.envs import *
 from battlecode.util import *
 # env = gym.make('CartPole-v1')
-other_agent_policy = AgentPolicy()
-env = TerritoryBattleSingleEnv((other_agent_policy,))
+# other_bot_policy = BotPolicy()
+env = TerritoryBattleBotEnv()
 env.reset(seed=1)
 for _ in range(1000):
     env.render()

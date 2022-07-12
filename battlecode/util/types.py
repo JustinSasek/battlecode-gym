@@ -102,7 +102,7 @@ class Agent:
 
 
 @dataclass
-class AgentObs(ObsType):
+class AgentObs:
     bots: list[NDArray]
     grid: NDArray
 

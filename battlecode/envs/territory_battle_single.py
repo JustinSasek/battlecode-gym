@@ -41,7 +41,7 @@ class TerritoryBattleSingleEnv(TerritoryBattleMultiEnv):
         :type window_height: int, optional
         :param agent_id: id of the agent we are getting the perspective of.
         :type agent_id: int, optional
-        """  # TODO: implement this
+        """
         super().__init__(shape, agents_init, bot_vision, max_ammo, spawn_chance, window_height)
 
         assert len(agent_policies) == len(agents_init) - 1, 'agent_policies and agents_init must have the same ' \
@@ -69,12 +69,15 @@ class TerritoryBattleSingleEnv(TerritoryBattleMultiEnv):
               seed: int | None = None,
               return_info: bool = False,
               options: dict | None = None,
-              ) -> FullObs | Tuple[FullObs, dict]:
+              ) -> Tuple[AgentObs, dict] | AgentObs:
         reset_info = super().reset(seed=seed, return_info=return_info, options=options)
 
-        self.last_obs = reset_info[0] if return_info else reset_info
-
-        return reset_info
+        if return_info:
+            self.last_obs: FullObs = reset_info[0]
+            return self.last_obs[self.agent_id], reset_info[1]
+        else:
+            self.last_obs: FullObs = reset_info
+            return self.last_obs[self.agent_id]
 
     def step(self, action: AgentAction) -> Tuple[AgentObs, AgentReward, bool, dict]:
         actions = []  # actions of manual and policy-controlled agents

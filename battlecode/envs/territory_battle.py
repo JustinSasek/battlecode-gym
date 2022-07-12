@@ -15,13 +15,13 @@ import pygame
 class TerritoryBattleMultiEnv(gym.Env):
     DEFAULT_MAX_TIMESTEP = 100
     # rewards per bot:
-    # -5 for death
+    # -7 for death
     # 0 for blocking, unsuccessfully attacking, noop, and movement
     # +1 for charging an attack
     # +3 for claiming
-    # +10 for kill
+    # +5 for kill
     REWARDS = {
-        'death': -5,
+        'death': -7,
         'block': 0,
         'noop': 0,
         'movement': 0,
@@ -30,7 +30,7 @@ class TerritoryBattleMultiEnv(gym.Env):
         'fail_claim': 0,
         'charge': 1,
         'claim': 3,
-        'kill': 10
+        'kill': 5,
     }
     COLORS = [
         (255, 255, 255),
@@ -227,7 +227,7 @@ class TerritoryBattleMultiEnv(gym.Env):
               seed: int | None = None,
               return_info: bool = False,
               options: dict | None = None,
-              ) -> FullObs | Tuple[FullObs, dict]:
+              ) -> Tuple[FullObs, dict] | FullObs:
         # We need the following line to seed self.np_random
         super().reset(seed=seed)
 
