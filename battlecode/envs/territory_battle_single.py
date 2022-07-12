@@ -11,7 +11,7 @@ class TerritoryBattleSingleEnv(TerritoryBattleMultiEnv):
     observation_space: spaces.Dict
 
     def __init__(self,
-                 agent_policies: Tuple[AgentPolicy, ...],
+                 agent_policies: Tuple[AgentPolicy, ...] = (AgentPolicy(),),
                  shape: int | Tuple[int, int] = (7, 5),
                  agents_init: Tuple[Bot, ...] = (Bot((0, 2), (1, 0)), Bot((6, 2), (-1, 0))),
                  bot_vision: int | Tuple[int, int] = (3, 3),
@@ -41,7 +41,7 @@ class TerritoryBattleSingleEnv(TerritoryBattleMultiEnv):
         :type window_height: int, optional
         :param agent_id: id of the agent we are getting the perspective of.
         :type agent_id: int, optional
-        """
+        """  # TODO: implement this
         super().__init__(shape, agents_init, bot_vision, max_ammo, spawn_chance, window_height)
 
         assert len(agent_policies) == len(agents_init) - 1, 'agent_policies and agents_init must have the same ' \

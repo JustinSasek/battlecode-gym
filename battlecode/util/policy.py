@@ -13,7 +13,7 @@ class Policy:
         pass
 
 
-class AgentPolicy(Policy):
+class AgentPolicy(Policy):  # TODO: create constructor which takes a bot policy
     # action_space should be consistent with observation
     def produce_action(self, obs: AgentObs, action_space: List) -> AgentAction:
         assert len(obs.bots) == len(action_space), 'observation and action space must have the same number of bots!'

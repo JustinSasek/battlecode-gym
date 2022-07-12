@@ -1,6 +1,6 @@
 from gym import spaces
 import numpy as np
-from ..util import Bot, FullObs, AgentObs, AgentReward, AgentPolicy, AgentAction
+from ..util import Bot, FullObs, AgentObs, AgentReward, AgentPolicy, AgentAction, BotPolicy
 from typing import Tuple
 from battlecode.mutable_spaces import List
 from . import TerritoryBattleSingleEnv
@@ -11,21 +11,20 @@ class TerritoryBattleBotSingleEnv(TerritoryBattleSingleEnv):
     observation_space: spaces.MultiDiscrete
 
     def __init__(self,
-                 agent_policies: Tuple[AgentPolicy, ...],
+                 bot_policies: Tuple[BotPolicy, ...] = (BotPolicy(),),
                  shape: int | Tuple[int, int] = (7, 5),
                  agents_init: Tuple[Bot, ...] = (Bot((0, 2), (1, 0)), Bot((6, 2), (-1, 0))),
                  bot_vision: int | Tuple[int, int] = (3, 3),
                  max_ammo: int = 3,
-                 spawn_chance: float = 0.01,
                  window_height: int = 560,
                  agent_id: int = 0,
                  ) -> None:
         """
         Create 2d grid world based on shape and spawn agents at given start points.
 
-        :param agent_policies: The policies that dictate the actions of the other agents. Should be a tuple of length
-        1 - agents_init, as it handles every agent except for agent agent_id
-        :type agent_policies: Tuple[AgentPolicy, ...]
+        :param bot_policies: The policies that dictate the actions of the other bots. Should be a tuple of length
+        1 - bots_init, as it handles every agent except for agent agent_id
+        :type bot_policies: Tuple[AgentPolicy, ...]
         :param shape: The 2d shape of the environment.
         :type shape: int or Tuple[int, int], optional
         :param agents_init: An n-tuple of 2-tuples, creates n agents with bots at given 2-tuple spawn point.
@@ -34,9 +33,6 @@ class TerritoryBattleBotSingleEnv(TerritoryBattleSingleEnv):
         :type bot_vision: int or Tuple[int, int], optional
         :param max_ammo: Max ammo that a bot can have to attack with.
         :type max_ammo: int, optional
-        :param spawn_chance: Probability of a given claimed territory to spawn a bot on a given tick. For some reason
-        this breaks the reproducibility of np.random_seed when it's nonzero.
-        :type spawn_chance: float, optional
         :param window_height: Height of the pygame window in human-mode.
         :type window_height: int, optional
         :param agent_id: id of the agent we are getting the perspective of.
