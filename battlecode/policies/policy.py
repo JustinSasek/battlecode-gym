@@ -1,5 +1,5 @@
-from . import AgentObs, AgentAction, AgentReward, RewardType, BotAction, BotReward
-from ..mutable_spaces import List
+from battlecode.util import AgentObs, AgentAction, AgentReward, RewardType, BotAction, BotReward
+from battlecode.mutable_spaces import List
 from gym.core import ObsType, ActType
 from gym.spaces import MultiDiscrete
 from numpy.typing import NDArray

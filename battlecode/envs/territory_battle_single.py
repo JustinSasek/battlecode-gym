@@ -1,6 +1,7 @@
 from gym import spaces
 import numpy as np
-from ..util import Bot, FullObs, AgentObs, AgentReward, AgentPolicy, AgentAction
+from ..util import Bot, FullObs, AgentObs, AgentReward, AgentAction, Cells
+from ..policies import AgentPolicy
 from typing import Tuple
 from battlecode.mutable_spaces import List
 from . import TerritoryBattleMultiEnv
@@ -52,7 +53,7 @@ class TerritoryBattleSingleEnv(TerritoryBattleMultiEnv):
         self.observation_space = spaces.Dict({
             'bots': List([self.bot_observation_space()]),
             'grid': spaces.MultiDiscrete(  # grid array + extra axis (of size 2) to hold the grid view and bot view
-                np.full(self.shape, self.n_agents + self.n_default_cells),
+                np.full(self.shape, self.n_agents + Cells.AGENT),
             ),
         })
 

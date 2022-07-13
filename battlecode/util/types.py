@@ -149,6 +149,7 @@ class Cells(IntEnum):
     EMPTY = 0
     WALL = 1
     UNKNOWN = 2
+    AGENT = 3
 
 
 class Layers(IntEnum):

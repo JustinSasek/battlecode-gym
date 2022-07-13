@@ -1,7 +1,9 @@
 from gym import spaces
-from ..util import Bot, BotReward, AgentPolicy, BotPolicy, BotAction
+from ..util import Bot, BotReward, BotAction, Cells
+from ..policies import AgentPolicy, BotPolicy
 from typing import Tuple
 from numpy.typing import NDArray
+import numpy as np
 from . import TerritoryBattleSingleEnv
 
 
@@ -62,4 +64,12 @@ class TerritoryBattleBotEnv(TerritoryBattleSingleEnv):
     def step(self, action: BotAction) -> Tuple[NDArray, BotReward, bool, dict]:
         observation, reward, done, info = super().step([action])
 
-        return observation.bots[0], reward[0], done, info
+        if len(observation.bots) == 0:  # if we are dead
+            done = True
+            bot_observation = np.full(self.bot_vision, Cells.UNKNOWN)
+            bot_reward = 0
+        else:
+            bot_observation = observation.bots[0]
+            bot_reward = reward[0]
+
+        return bot_observation, bot_reward, done, info

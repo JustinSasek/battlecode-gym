@@ -49,24 +49,23 @@ class TerritoryBattleMultiEnv(gym.Env):
     ]
     BOT_OUTLINE = {
         'width': 0.1,  # as a percentage of total cell width
-        'color': (100, 100, 100)
+        'color': (127, 127, 127)
     }
 
     metadata = {
         'render_modes': ['human', 'rgb_array'],
-        'render_fps': 4
+        'render_fps': 3
     }
 
     action_space: spaces.Tuple
     observation_space: spaces.Tuple
 
     n_layers = len(Layers)
-    n_default_cells = len(Cells)
     n_rot_to_rot = {
         0: (1, 0),
-        1: (0, 1),
+        1: (0, -1),
         2: (-1, 0),
-        3: (0, -1),
+        3: (0, 1),
     }
 
     def __init__(self,
@@ -133,7 +132,7 @@ class TerritoryBattleMultiEnv(gym.Env):
         self.observation_space = spaces.Tuple(tuple(spaces.Dict({
             'bots': List([self.bot_observation_space()]),
             'grid': spaces.MultiDiscrete(  # grid array + extra axis (of size 2) to hold the grid view and bot view
-                np.full(self.shape, self.n_agents + self.n_default_cells),
+                np.full(self.shape, self.n_agents + Cells.AGENT),
             ),
         }) for _ in range(self.n_agents)))
 
@@ -158,13 +157,20 @@ class TerritoryBattleMultiEnv(gym.Env):
 
     # each bot can see a 3x3 in front and a bit to left and right. last axis is for grid/bot view
     def bot_observation_space(self):
-        return spaces.MultiDiscrete(np.full(self.bot_vision, self.n_agents + self.n_default_cells))
+        return spaces.MultiDiscrete(np.full(self.bot_vision, self.n_agents + Cells.AGENT))
 
     def _get_obs(self) -> FullObs:
         agent_observations = []
-        for agent in self.agents:
+        global_agent_mask = self.grid == Cells.AGENT  # mask of cells belonging to agent with id of Cells.AGENT
+        for agent_id, agent in enumerate(self.agents):
             agent_view = np.full_like(self.grid, Cells.UNKNOWN)  # all unknown by default
             agent_observation = AgentObs([], agent_view)
+
+            agent_mask = self.grid == Cells.AGENT + agent_id  # mask of cells belonging to this agent (territory or bot)
+
+            perspective_grid = np.copy(self.grid)  # a copy with our agent id swapped with agent of id Cells.AGENT
+            perspective_grid[global_agent_mask] = Cells.AGENT + agent_id
+            perspective_grid[agent_mask] = Cells.AGENT
 
             for bot in agent.bots:
                 view_size = tuple(self.bot_vision[:2][bot.rot[1 - i]] for i in range(2))
@@ -174,18 +180,18 @@ class TerritoryBattleMultiEnv(gym.Env):
                 bot_view_global = np.full(view_size + (self.n_layers,), Cells.UNKNOWN)  # bot view in global coords
 
                 grid_intersect = (  # area of intersection between global grid and bot view, global perspective
-                    slice(max(0, view_pos[0]), min(self.grid.shape[0], view_pos[0] + view_size[0])),
-                    slice(max(0, view_pos[1]), min(self.grid.shape[1], view_pos[1] + view_size[1]))
+                    slice(max(0, view_pos[0]), min(perspective_grid.shape[0], view_pos[0] + view_size[0])),
+                    slice(max(0, view_pos[1]), min(perspective_grid.shape[1], view_pos[1] + view_size[1]))
                 )
                 view_intersect = (  # area of intersection between global grid and bot view, local perspective
                     slice(max(0, -view_pos[0]),
-                          view_size[0] + min(0, self.grid.shape[0] - (view_pos[0] + view_size[0]))),
+                          view_size[0] + min(0, perspective_grid.shape[0] - (view_pos[0] + view_size[0]))),
                     slice(max(0, -view_pos[1]),
-                          view_size[1] + min(0, self.grid.shape[1] - (view_pos[1] + view_size[1]))),
+                          view_size[1] + min(0, perspective_grid.shape[1] - (view_pos[1] + view_size[1]))),
                 )
 
                 bot_view_global[view_intersect[0], view_intersect[1]] = \
-                    self.grid[grid_intersect[0], grid_intersect[1]]
+                    perspective_grid[grid_intersect[0], grid_intersect[1]]
 
                 n_rotations = self._rot_to_n(bot.rot)  # how to rotate from world to local coordinates
                 bot_view = np.rot90(bot_view_global, n_rotations)  # relative bot view
@@ -195,7 +201,7 @@ class TerritoryBattleMultiEnv(gym.Env):
                 # https://ir.lib.uwo.ca/cgi/viewcontent.cgi?article=8883&context=etd
                 for axis_0 in bot_view:
                     for j in range(bot_view.shape[1] - 1):  # walls in last layer cannot cast shadows
-                        if axis_0[j, 0] == Cells.WALL:
+                        if axis_0[j, Layers.GRID] == Cells.WALL:
                             axis_0[j + 1:] = Cells.UNKNOWN  # every block after this one in 1-axis is unknown
 
                 bot_view_global = np.rot90(bot_view, -n_rotations)  # sending shadow casting result back to world
@@ -209,7 +215,7 @@ class TerritoryBattleMultiEnv(gym.Env):
 
     @staticmethod
     def _rot_to_n(rot):
-        return abs(rot[0] + 2 * rot[1] - 1)
+        return abs(rot[0] + -2 * rot[1] - 1)
 
     def _get_info(self) -> dict:
         return {
@@ -239,7 +245,7 @@ class TerritoryBattleMultiEnv(gym.Env):
             self.agents[i].bots.clear()  # remove all bots and add in initial bot
             starting_bot = deepcopy(bot_init)
             self.agents[i].bots.append(starting_bot)
-            self.grid[bot_init.pos] = self.n_default_cells + i  # fill in all layers with the bot id at its spawn
+            self.grid[bot_init.pos] = Cells.AGENT + i  # fill in all layers with the bot id at its spawn
             self.position_bots[starting_bot.pos] = starting_bot  # update
 
         # reset action space
@@ -325,6 +331,7 @@ class TerritoryBattleMultiEnv(gym.Env):
             else:  # if not valid attack
                 reward[bot.agent_id][bot.id] += self.REWARDS['fail_attack']
         for attack_pos, attacker in attack_targets:  # delete attacked bots if they are not blocking
+            attacker.ammo -= 1
             if attack_pos in self.position_bots and not self.position_bots[attack_pos].block:
                 bot = self.position_bots[attack_pos]
                 del self._action_space[bot.agent_id][bot.id]  # delete bot from action space
@@ -344,10 +351,10 @@ class TerritoryBattleMultiEnv(gym.Env):
             self.agents[block.bot.agent_id].bots[block.bot.id].block = False  # bot is no longer blocking
         for claim in agent_actions[MainActions.CLAIM]:
             bot = claim.bot
-            if self.grid[bot.pos][Layers.GRID] == bot.agent_id + self.n_default_cells:  # if already claimed
+            if self.grid[bot.pos][Layers.GRID] == bot.agent_id + Cells.AGENT:  # if already claimed
                 reward[bot.agent_id][bot.id] += self.REWARDS['fail_claim']
             else:  # if not claimed yet, we can claim
-                self.grid[bot.pos][Layers.GRID] = bot.agent_id + self.n_default_cells  # claim grid cell
+                self.grid[bot.pos][Layers.GRID] = bot.agent_id + Cells.AGENT  # claim grid cell
                 reward[bot.agent_id][bot.id] += self.REWARDS['claim']
         for noop in agent_actions[MainActions.NOOP]:
             bot = noop.bot
@@ -371,7 +378,7 @@ class TerritoryBattleMultiEnv(gym.Env):
         for new_pos, bots in pending_movements.items():
             bot = bots[self.np_random.integers(len(bots))]  # pick a random bot to proceed to the spot
             self.grid[bot.pos][Layers.BOT] = Cells.EMPTY
-            self.grid[new_pos][Layers.BOT] = self.n_default_cells + bot.agent_id  # update world grid
+            self.grid[new_pos][Layers.BOT] = Cells.AGENT + bot.agent_id  # update world grid
             del self.position_bots[bot.pos]
             self.position_bots[new_pos] = bot  # update position-bot mapping
             bot.pos = new_pos  # update bot pos property
@@ -386,15 +393,15 @@ class TerritoryBattleMultiEnv(gym.Env):
         # bot creation
         for i, row in enumerate(self.grid):
             for j, cell in enumerate(row):
-                if cell[Layers.GRID] >= self.n_default_cells and cell[Layers.BOT] == Cells.EMPTY:
-                    agent_id = cell[Layers.GRID] - self.n_default_cells
+                if cell[Layers.GRID] >= Cells.AGENT and cell[Layers.BOT] == Cells.EMPTY:
+                    agent_id = cell[Layers.GRID] - Cells.AGENT
                     rand = self.np_random.uniform(low=0, high=1, size=1)  # if cell is claimed and no bot is on it
                     if rand < self.spawn_chance:  # if we get lucky and get to spawn a bot here
                         bot = Bot(pos=(i, j), rot=self.agents_init[agent_id].rot)
                         self._action_space[agent_id].append(self.bot_action_space())  # add to action space
                         self.position_bots[(i, j)] = bot  # add position-bot mapping
                         self.agents[agent_id].bots.append(bot)  # add bot to agent
-                        self.grid[i, j, Layers.BOT] = self.n_default_cells + agent_id  # add bot to grid
+                        self.grid[i, j, Layers.BOT] = Cells.AGENT + agent_id  # add bot to grid
 
         # observation
         self.timestep += 1
@@ -450,10 +457,18 @@ class TerritoryBattleMultiEnv(gym.Env):
                 # draw circle
                 pygame.draw.circle(
                     canvas,
-                    self.COLORS[bot.agent_id + self.n_default_cells],
+                    self.COLORS[bot.agent_id + Cells.AGENT],
                     ((bot.pos[0] + 0.5) * self.cell_width, (self.grid.shape[1] - bot.pos[1] - 0.5) * self.cell_width),
                     self.cell_width // 3
                 )
+                if bot.ammo > 0:
+                    # draw ammo
+                    pygame.draw.circle(
+                        canvas,
+                        tuple(max(0, channel - 80) for channel in self.COLORS[bot.agent_id + Cells.AGENT]),
+                        ((bot.pos[0] + 0.5) * self.cell_width, (self.grid.shape[1] - bot.pos[1] - 0.5) * self.cell_width),
+                        (self.cell_width // 3) // (self.max_ammo - bot.ammo + 1)
+                    )
                 # draw outline
                 pygame.draw.circle(
                     canvas,
