@@ -102,8 +102,14 @@ class Agent:
 
 
 @dataclass
+class BotObs:
+    view: NDArray
+    ammo: int
+
+
+@dataclass
 class AgentObs:
-    bots: list[NDArray]
+    bots: list[BotObs]
     grid: NDArray
 
 

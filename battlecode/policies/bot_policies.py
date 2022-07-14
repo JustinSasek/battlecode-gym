@@ -22,7 +22,7 @@ def is_free(cell):  # check if cell (1-dimensional array) is free to move on to
 
 class ClaimSimplePolicy(BotPolicy):
     def produce_action(self, obs, action_space):
-        if obs[0, 1, Layers.GRID] != Cells.AGENT:  # if the grid cell we are over is not claimed by us
+        if obs.view[0, 1, Layers.GRID] != Cells.AGENT:  # if the grid cell we are over is not claimed by us
             return MainActions.CLAIM, TurnActions.NOOP
 
-        return forward_avoid_obstacle(obs)
+        return forward_avoid_obstacle(obs.view)

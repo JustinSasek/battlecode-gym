@@ -1,4 +1,4 @@
-from battlecode.util import AgentObs, AgentAction, AgentReward, RewardType, BotAction, BotReward
+from battlecode.util import AgentObs, AgentAction, AgentReward, RewardType, BotAction, BotReward, BotObs
 from battlecode.mutable_spaces import List
 from gym.core import ObsType, ActType
 from gym.spaces import MultiDiscrete
@@ -30,10 +30,10 @@ class Policy:
 
 
 class BotPolicy(Policy):
-    def produce_action(self, obs: NDArray, action_space: MultiDiscrete) -> BotAction:
+    def produce_action(self, obs: BotObs, action_space: MultiDiscrete) -> BotAction:
         return action_space.sample()
 
-    def process_transition(self, old_obs: NDArray, action: BotAction, reward: BotReward, obs: NDArray) -> None:
+    def process_transition(self, old_obs: BotObs, action: BotAction, reward: BotReward, obs: BotObs) -> None:
         pass
 
 

@@ -208,7 +208,7 @@ class TerritoryBattleMultiEnv(gym.Env):
                 agent_view[grid_intersect[0], grid_intersect[1]] = \
                     bot_view_global[view_intersect[0], view_intersect[1]]
 
-                agent_observation.bots.append(bot_view)
+                agent_observation.bots.append(BotObs(bot_view, bot.ammo))
             agent_observations.append(agent_observation)
 
         return tuple(agent_observations)
@@ -466,7 +466,10 @@ class TerritoryBattleMultiEnv(gym.Env):
                     pygame.draw.circle(
                         canvas,
                         tuple(max(0, channel - 80) for channel in self.COLORS[bot.agent_id + Cells.AGENT]),
-                        ((bot.pos[0] + 0.5) * self.cell_width, (self.grid.shape[1] - bot.pos[1] - 0.5) * self.cell_width),
+                        (
+                            (bot.pos[0] + 0.5) * self.cell_width,
+                            (self.grid.shape[1] - bot.pos[1] - 0.5) * self.cell_width
+                        ),
                         (self.cell_width // 3) // (self.max_ammo - bot.ammo + 1)
                     )
                 # draw outline
