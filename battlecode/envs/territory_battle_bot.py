@@ -1,5 +1,5 @@
 from gym import spaces
-from ..util import Bot, BotReward, BotAction, Cells
+from ..util import Bot, BotReward, BotAction, Cells, BotObs
 from ..policies import AgentPolicy, BotPolicy
 from typing import Tuple
 from numpy.typing import NDArray
@@ -53,7 +53,7 @@ class TerritoryBattleBotEnv(TerritoryBattleSingleEnv):
               seed: int | None = None,
               return_info: bool = False,
               options: dict | None = None,
-              ) -> Tuple[NDArray, dict] | NDArray:
+              ) -> Tuple[BotObs, dict] | BotObs:
         reset_info = super().reset(seed=seed, return_info=return_info, options=options)
 
         if return_info:
@@ -61,12 +61,12 @@ class TerritoryBattleBotEnv(TerritoryBattleSingleEnv):
         else:
             return reset_info.bots[0]
 
-    def step(self, action: BotAction) -> Tuple[NDArray, BotReward, bool, dict]:
+    def step(self, action: BotAction) -> Tuple[BotObs, BotReward, bool, dict]:
         observation, reward, done, info = super().step([action])
 
         if len(observation.bots) == 0:  # if we are dead
             done = True
-            bot_observation = np.full(self.bot_vision, Cells.UNKNOWN)
+            bot_observation = BotObs(np.full(self.bot_vision, Cells.UNKNOWN), 0)
             bot_reward = 0
         else:
             bot_observation = observation.bots[0]
