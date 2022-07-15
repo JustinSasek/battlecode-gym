@@ -1,5 +1,6 @@
 from .policy import AgentPolicy, BotPolicy
-from .bot_policies import RandomPolicy, ClaimSimplePolicy
+from .random import RandomPolicy
+from .claim_simple import ClaimSimplePolicy
 
 __all__ = [
     "AgentPolicy",
