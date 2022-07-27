@@ -3,7 +3,6 @@ from ..util import Cells, MainActions, TurnActions, Layers
 
 
 class ClaimSimplePolicy(BotPolicy):
-
     @staticmethod
     def is_free_unclaimed(cell):  # check if cell (1-dimensional array) is free to move on to and not claimed by us
         return cell[Layers.GRID] not in (Cells.WALL, Cells.UNKNOWN, Cells.AGENT) and cell[Layers.BOT] == Cells.EMPTY

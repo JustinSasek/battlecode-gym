@@ -4,8 +4,8 @@ from battlecode.policies import *
 from battlecode.util import *
 # env = gym.make('CartPole-v1')
 # other_bot_policy = BotPolicy()
-env = TerritoryBattleBotEnv((ClaimSimplePolicy(),))
-policy = ClaimSimplePolicy()
+env = TerritoryBattleBotEnv((DefensivePolicy(),))
+policy = OffensivePolicy()
 obs = env.reset()
 for _ in range(1000):
     env.render()
